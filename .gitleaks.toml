@@ -3,11 +3,16 @@ title = "wp_security_ForSure"
 [extend]
 useDefault = true
 
-# Faux secrets volontaires : ces tests vérifient que le masquage fonctionne.
-[[allowlists]]
-description = "Faux secrets des tests de masquage et de détection"
+# Faux secrets volontaires : les tests vérifient que le masquage et la
+# détection fonctionnent ; les checklists montrent des commandes curl avec des
+# identifiants fictifs (admin:app_password_test).
+# Syntaxe [allowlist] : comprise par gitleaks 8.24, la version de l'action.
+[allowlist]
+description = "Faux secrets des tests et identifiants fictifs de la documentation"
 paths = [
   '''^tests/test_redact\.py$''',
   '''^tests/test_soft404_baseline\.py$''',
   '''^tests/test_malware_confidence\.py$''',
+  '''^research/checklists/05-brute-force-login\.md$''',
+  '''^research/checklists/09-cookies-sessions\.md$''',
 ]
