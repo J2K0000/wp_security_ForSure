@@ -1,0 +1,32 @@
+name: False positive or false negative
+description: A finding is wrong, or a known issue was missed
+labels: ["detection"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste the real address of a site you audited, its usernames, or any secret.
+        Replace hosts with `example.test` and keep only the HTTP evidence needed to reproduce.
+  - type: input
+    id: check
+    attributes:
+      label: Check name (as shown by `wp-security-forsure list`)
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options: ["False positive", "False negative"]
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Anonymised evidence (request, response excerpt, finding text)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Tool version (`wp-security-forsure --version` or pip show)

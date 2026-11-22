@@ -1,0 +1,21 @@
+name: Bug report
+description: The tool crashes or behaves unexpectedly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include real target hosts, usernames or secrets. Use `example.test`.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Command line and anonymised output
+  - type: input
+    id: env
+    attributes:
+      label: Tool version, Python version, OS

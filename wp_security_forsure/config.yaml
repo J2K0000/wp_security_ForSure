@@ -1,0 +1,65 @@
+# wp_security_ForSure : configuration
+timeout: 30           # Timeout HTTP par défaut (secondes)
+# User-Agent : vide = valeur par défaut identifiable, avec l'URL du projet
+# (wp_security_forsure.USER_AGENT). Ne pas usurper un navigateur ou un robot.
+user_agent: ""
+output_dir: "./reports"
+
+# Scanner 100 % passif, lecture seule : seules GET, HEAD et OPTIONS sont émises,
+# sans charge d'attaque ; aucune adresse privée, de bouclage ou de lien local
+# n'est jamais contactée ; les redirections ne sont suivies que vers la cible
+# (et sa variante www.), 5 sauts au plus. Aucun mode actif ou destructif.
+
+# Niveaux d'accès (scanner/access_tiers.py). Par défaut, seuls la page
+# d'accueil, ce qu'elle référence et les points d'entrée publics standard de
+# WordPress sont sondés (niveaux 0 et 1). true (ou --authorized) : active la
+# recherche de chemins non liés (niveau 2), réservée à l'audit d'un site dont
+# on a l'autorisation écrite du propriétaire. Toujours en lecture seule ;
+# wp-cron.php et les fichiers PHP devinés sous wp-content/ ne sont jamais
+# demandés, quel que soit le niveau.
+authorized: false
+
+# Robustesse (Chantier 3)
+max_response_bytes: 5242880 # Borne de lecture des corps HTTP (5 Mio). 0 = illimité
+max_requests: 2000          # Budget de requêtes réseau par audit. 0 = illimité
+skip_reachability: false    # true = ne pas sonder la joignabilité avant l'audit
+
+# Énumération étendue des sous-domaines (check takeover) via Certificate
+# Transparency (crt.sh). false = mode léger (hôte cible + ressources externes
+# de la page). true = énumère les sous-domaines et teste chacun (plus lent,
+# dépend de crt.sh). Non destructif dans les deux cas (DNS + GET lecture seule).
+takeover_enum: false
+
+# Priorités : quels checks exécuter et dans quel ordre
+checks:
+  # Prio 1, Intrusion & Prise de Contrôle
+  - fingerprint
+  - vulnerability_scan
+  - rest_batch  # wp2shell / CVE-2026-63030 : RCE pré-auth, exposition (passif)
+  - ssrf_endpoints  # SSRF non-auth via endpoints REST custom + cœur DNS-rebinding
+  - auth_bypass_state  # auth-bypass/priv-esc conditionnels (état runtime / secret faible)
+  - nulled_plugins
+  - high_risk_plugins
+  - forms_upload
+  - malware_detection
+  - cloaking_seo_spam
+  - brute_force_login
+  - wp_features
+  - file_exposure
+  - database_exposure
+
+  # Prio 2, Information Utilisateurs & Sensibles
+  - rest_api
+  - webhook_exposure  # endpoints récepteurs de webhooks exposés (surface, passif)
+  - cookies_sessions
+  - third_party_scripts
+  - ssl_tls
+  - email_auth  # SPF/DKIM/DMARC, surface d'usurpation email (passif, DNS)
+
+  # Prio 3, Configuration & Hardening
+  - security_headers
+  - server_security
+  - waf_cdn
+  - takeover  # subdomain/subresource takeover (DNS dangling + fingerprints)
+  - cache_security
+  - multisite  # Activé seulement si détecté

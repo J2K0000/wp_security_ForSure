@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wp-security-forsure"
+version = "0.1.0"
+description = "Passive, read-only external security audit for WordPress sites"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.10"
+authors = [{ name = "J2K0000" }]
+keywords = ["wordpress", "security", "scanner", "audit", "passive", "cve"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+]
+dependencies = [
+    "requests>=2.32,<3",
+    "urllib3>=2.2,<3",
+    "pyyaml>=6.0,<7",
+    "rich>=13.7,<16",
+    "packaging>=24,<27",
+    "dnspython>=2.6,<3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "responses>=0.25,<1"]
+
+[project.scripts]
+wp-security-forsure = "wp_security_forsure.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/J2K0000/wp_security_ForSure"
+Issues = "https://github.com/J2K0000/wp_security_ForSure/issues"
+Security = "https://github.com/J2K0000/wp_security_ForSure/security/policy"
+
+[tool.setuptools.packages.find]
+include = ["wp_security_forsure*"]
+
+[tool.setuptools.package-data]
+wp_security_forsure = ["config.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-p no:cacheprovider"

@@ -1,0 +1,13 @@
+title = "wp_security_ForSure"
+
+[extend]
+useDefault = true
+
+# Faux secrets volontaires : ces tests vérifient que le masquage fonctionne.
+[[allowlists]]
+description = "Faux secrets des tests de masquage et de détection"
+paths = [
+  '''^tests/test_redact\.py$''',
+  '''^tests/test_soft404_baseline\.py$''',
+  '''^tests/test_malware_confidence\.py$''',
+]

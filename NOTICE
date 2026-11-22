@@ -1,0 +1,9 @@
+wp_security_ForSure
+Copyright 2026 J2K0000 and the wp_security_ForSure contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Vulnerability data is fetched at run time from WPVulnerability
+(https://www.wpvulnerability.net/). Exploit prediction scores come from the
+EPSS model by FIRST (https://www.first.org/epss/). Neither dataset is
+bundled in this distribution.
