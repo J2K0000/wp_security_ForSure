@@ -3,9 +3,10 @@
 Un secret lu sur la cible (mot de passe de base de données, clé ou sel
 WordPress, jeton, clé d'API, chaîne de connexion, cookie de session, empreinte
 de mot de passe, clé privée) ne doit jamais être recopié en clair dans un
-rapport. On garde au plus 4 caractères, puis ``***``, la longueur et les
-8 premiers caractères hexadécimaux du SHA-256 de la valeur : de quoi prouver
-la fuite et la recouper avec le propriétaire du site, sans la reproduire.
+rapport. On garde au plus 4 caractères (jamais plus du quart de la valeur),
+puis ``***`` et la longueur : de quoi prouver la fuite sans la reproduire.
+Aucune empreinte n'est ajoutée, car même tronquée elle permettrait de
+confirmer hors ligne un mot de passe faible deviné.
 
 S'applique à la source (checks d'exposition) et, en défense en profondeur,
 dans les trois reporters juste avant le rendu. Le masquage est idempotent :
