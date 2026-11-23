@@ -9,6 +9,7 @@ Usage:
   python3 -m wp_security_forsure vulncache --info          # Etat du cache CVE
   python3 -m wp_security_forsure vulncache --clear         # Vider le cache CVE
   python3 -m wp_security_forsure refresh-epss              # Télécharge le snapshot EPSS (réseau)
+  python3 -m wp_security_forsure refresh-kev               # Télécharge le catalogue CISA KEV (réseau)
 
 Codes de sortie : voir EXIT_CODES_HELP (affiché par --help).
 """
@@ -31,7 +32,7 @@ from . import __version__
 from .scanner.engine import PRIORITY_LABELS, ScanEngine, UnknownCheckError, check_catalog
 from .scanner.reporters import get_reporter
 from .scanner.status import audit_is_complete
-from .scanner.vulndb.cache import epss_path, vulncache_path
+from .scanner.vulndb.cache import epss_path, kev_path, vulncache_path
 
 EXIT_OK = 0
 EXIT_CRITICAL = 1
@@ -43,12 +44,14 @@ Codes de sortie :
   0  audit complet, aucun constat CRITICAL confirmé
   1  au moins un constat CRITICAL confirmé (l'emporte sur le code 3)
   2  erreur d'usage : argument invalide, check inconnu, configuration illisible
-  3  audit incomplet : cible injoignable ou au moins un contrôle en erreur
+  3  audit incomplet : cible injoignable ou au moins un contrôle en erreur ;
+     refresh-kev : téléchargement impossible (instantané existant conservé)
 
 Format du rapport : --format, sinon déduit de l'extension de --output
 (.html, .json ; toute autre extension : texte du rapport terminal).
-Cache CVE et snapshot EPSS : dossier de cache utilisateur, modifiable par la
-variable d'environnement WP_SECURITY_FORSURE_CACHE_DIR."""
+Cache CVE, snapshot EPSS, catalogue CISA KEV et cache wordpress.org : dossier
+de cache utilisateur, modifiable par la variable d'environnement
+WP_SECURITY_FORSURE_CACHE_DIR."""
 
 _FORMAT_BY_EXTENSION = {".html": "html", ".htm": "html", ".json": "json"}
 
@@ -109,6 +112,57 @@ def refresh_epss(dest, url="https://epss.cyentia.com/epss_scores-current.csv.gz"
     return dest
 
 
+# Borne de lecture du flux KEV (environ 1,5 Mio fin 2026) : protège la RAM.
+KEV_MAX_BYTES = 32 * 1024 * 1024
+
+
+def refresh_kev(dest, url=None, session=None, timeout=60):
+    """Télécharge le catalogue CISA KEV (JSON, licence CC0) vers `dest`.
+
+    Réseau opt-in (commande refresh-kev), jamais pendant un audit. Une seule
+    requête GET, par une session munie de la garde passive (méthode et
+    destination) ; corps borné à KEV_MAX_BYTES. Le flux est validé avant
+    écriture, puis écrit par remplacement atomique : en cas d'échec,
+    l'instantané existant est conservé. Renvoie (chemin, nombre d'entrées,
+    version du catalogue) ; lève requests.RequestException ou ValueError.
+    """
+    import json
+    import os
+    import requests
+    from . import USER_AGENT
+    from .scanner.checks.base import install_passive_guard
+    from .scanner.vulndb.kev import KEV_URL, validate_feed
+
+    url = url or KEV_URL
+    session = session or requests.Session()
+    install_passive_guard(session)
+    resp = session.get(url, timeout=timeout, stream=True,
+                       headers={"Accept": "application/json",
+                                "User-Agent": USER_AGENT})
+    try:
+        resp.raise_for_status()
+        chunks, total = [], 0
+        for chunk in resp.iter_content(chunk_size=65536):
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > KEV_MAX_BYTES:
+                raise ValueError("flux KEV trop volumineux : téléchargement "
+                                 f"interrompu au-delà de {KEV_MAX_BYTES} octets")
+            chunks.append(chunk)
+    finally:
+        resp.close()
+    body = b"".join(chunks)
+    data = json.loads(body.decode("utf-8"))
+    count = validate_feed(data)
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".tmp")
+    tmp.write_bytes(body)
+    os.replace(tmp, dest)
+    return dest, count, data.get("catalogVersion")
+
+
 def _has_confirmed_critical(results) -> bool:
     """True s'il existe au moins un finding CRITICAL de confiance 'confirmed'."""
     return any(
@@ -149,7 +203,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version",
                         version=f"%(prog)s {__version__}")
     parser.add_argument("action", nargs="?", default="audit",
-                        choices=["audit", "list", "vulncache", "refresh-epss"],
+                        choices=["audit", "list", "vulncache", "refresh-epss",
+                                 "refresh-kev"],
                         help="Action à exécuter")
     parser.add_argument("target", nargs="?",
                         help="URL cible (ex: https://cible.com)")
@@ -199,6 +254,18 @@ def main(argv=None):
     if args.action == "refresh-epss":
         path = refresh_epss(epss_path())
         print(f"EPSS snapshot écrit : {path}")
+        return EXIT_OK
+
+    if args.action == "refresh-kev":
+        import requests
+        try:
+            path, count, version = refresh_kev(kev_path(), timeout=args.timeout)
+        except (requests.RequestException, ValueError, OSError) as e:
+            print(f"Téléchargement du catalogue CISA KEV impossible : {e}. "
+                  "Instantané existant conservé.", file=sys.stderr)
+            return EXIT_INCOMPLETE
+        print(f"Catalogue CISA KEV écrit : {path} ({count} entrées"
+              + (f", version {version})" if version else ")"))
         return EXIT_OK
 
     if not args.target:

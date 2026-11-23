@@ -23,7 +23,10 @@ Flagged HIGH:
 from typing import List, Optional, Any
 import json
 
+from ..redact import mask_email, mask_username, usernames_masked
 from .base import BaseCheck, CheckResult
+from .brute_force_login import (UserSighting, report_risky_accounts,
+                                rest_user_sightings)
 from .rest_api_data import (
     RISKY_NAMESPACE_PATTERNS,
     CORE_NAMESPACE_PREFIXES,
@@ -50,6 +53,12 @@ class RestApiCheck(BaseCheck):
     severity = "CRITICAL"
     access_tier = 1  # routes REST en lecture
     depends_on: List[str] = []
+
+    def __init__(self, target: str, config: dict, session):
+        super().__init__(target, config, session)
+        # Noms relevés par l'énumération (liste et fiches wp/v2/users),
+        # confrontés à la liste unique des noms à risque (redact).
+        self._sightings: List[UserSighting] = []
 
     # ── Public API ────────────────────────────────────────────────────
 
@@ -147,13 +156,31 @@ class RestApiCheck(BaseCheck):
 
     # ── 2) User enumeration ────────────────────────────────────────────
 
+    def _user(self, name) -> str:
+        """Nom tel qu'il peut figurer dans une preuve (redact.mask_username)."""
+        return mask_username(name, self.target, usernames_masked(self.config))
+
+    def _saw_rest_user(self, user: dict, source: str) -> None:
+        self._sightings += rest_user_sightings(user, source)
+
+    def _report_risky_accounts(self) -> None:
+        """Comptes à risque vus par cette source (même message que
+        brute_force_login : le moteur n'en garde qu'un)."""
+        report_risky_accounts(self._result, self.target, self._sightings)
+
     def _check_user_enumeration(self) -> None:
         """Check for user enumeration via /wp/v2/users/."""
-        # ── a) List all users ──
+        if self._check_user_enumeration_list():
+            self._check_user_enumeration_ids()
+        self._report_risky_accounts()
+
+    def _check_user_enumeration_list(self) -> bool:
+        """a) Liste des utilisateurs. False si l'API ne répond pas ou refuse :
+        l'oracle par identifiant n'est alors pas tenté."""
         url_path = "wp-json/wp/v2/users"
         users, resp = self.get_json(url_path)
         if users is None:
-            return
+            return False
 
         # Check for error response
         if isinstance(users, dict) and "code" in users:
@@ -168,13 +195,16 @@ class RestApiCheck(BaseCheck):
                     evidence=f"REST API error: {users.get('message', '')}",
                     url=f"{self.target.rstrip('/')}/{url_path}",
                 )
-            return
+            return False
 
         # Users returned as array
         if isinstance(users, list) and len(users) > 0:
+            users = [u for u in users if isinstance(u, dict)]
+            for u in users:
+                self._saw_rest_user(u, "API REST wp-json/wp/v2/users")
             user_ids = [u.get("id") for u in users if u.get("id")]
-            user_slugs = [u.get("slug") for u in users if u.get("slug")]
-            has_email = any(u.get("email") for u in users if isinstance(u, dict))
+            user_slugs = [self._user(u.get("slug")) for u in users if u.get("slug")]
+            has_email = any(u.get("email") for u in users)
 
             severity = "CRITICAL" if has_email else "HIGH"
             evidence_parts = []
@@ -199,8 +229,8 @@ class RestApiCheck(BaseCheck):
             if admin_user:
                 evidence_parts.append(
                     f"Admin user found: id={admin_user.get('id')}, "
-                    f"slug={admin_user.get('slug')}, "
-                    f"name={admin_user.get('name')}"
+                    f"slug={self._user(admin_user.get('slug'))}, "
+                    f"name={self._user(admin_user.get('name'))}"
                 )
 
             # Try to get X-WP-Total header for user count
@@ -221,8 +251,10 @@ class RestApiCheck(BaseCheck):
                 evidence="\n".join(evidence_parts),
                 url=f"{self.target.rstrip('/')}/{url_path}",
             )
+        return True
 
-        # ── b) User ID oracle, test IDs 1 through 10 ──
+    def _check_user_enumeration_ids(self) -> None:
+        """b) Oracle par identifiant, ID 1 à 10."""
         for uid in range(1, 11):
             u_data, u_resp = self.get_json(f"wp-json/wp/v2/users/{uid}")
             if u_data is None:
@@ -260,7 +292,11 @@ class RestApiCheck(BaseCheck):
 
             # If we get data back, that's user data exposed
             if isinstance(u_data, dict) and u_data.get("id"):
+                self._saw_rest_user(u_data, f"API REST wp-json/wp/v2/users/{uid}")
                 has_email = bool(u_data.get("email"))
+                email = (mask_email(u_data["email"], self.target,
+                                    usernames_masked(self.config))
+                         if has_email else "")
                 self._result.add_finding(
                     message=(
                         f"User ID {uid} data exposed via "
@@ -268,9 +304,9 @@ class RestApiCheck(BaseCheck):
                     ),
                     severity="CRITICAL" if has_email else "HIGH",
                     evidence=(
-                        f"User: {u_data.get('name', 'unknown')} "
-                        f"(slug: {u_data.get('slug', '')})"
-                        + (f", email: {u_data['email']}" if has_email else "")
+                        f"User: {self._user(u_data.get('name', 'unknown'))} "
+                        f"(slug: {self._user(u_data.get('slug', ''))})"
+                        + (f", email: {email}" if has_email else "")
                     ),
                     url=(
                         f"{self.target.rstrip('/')}/"

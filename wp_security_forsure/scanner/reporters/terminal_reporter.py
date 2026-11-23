@@ -13,6 +13,8 @@ from ..access_tiers import AUTHORIZED_WARNING, SKIPPED_LABEL, access_level
 from ..status import (ERROR_LABEL, audit_is_complete, error_results, is_error,
                       incomplete_label, is_skipped, ok_results, skipped_results)
 from ..vulndb import freshness
+from .guidance import (RECOMMENDATIONS_TITLE, audit_limits_block, incident_block,
+                       recommendations_block)
 from .impact import exposure_surface, narrative
 
 SEVERITY_COLORS = {
@@ -37,6 +39,34 @@ SEVERITY_ICONS = {
 def _e(value) -> str:
     """Texte issu de la cible : échappé pour ne jamais être lu comme balisage Rich."""
     return escape(str(value or ""))
+
+
+def _incident_lines(block: dict) -> list:
+    """Corps du bloc de réponse à incident (texte Rich échappé)."""
+    lines = [f"[bold]{_e(block['lead'])}[/]"]
+    for ind in block["indicators"][:8]:
+        lines.append(f"  [dim]Indice :[/] {_e(ind['message'])} "
+                     f"[dim]({_e(ind['check'])}, {_e(ind['severity'])})[/]")
+    lines += [f"  {i}. {_e(step)}" for i, step in enumerate(block["steps"], 1)]
+    lines.append(f"[bold]{_e(block['warning'])}[/]")
+    return lines
+
+
+def _print_guidance_annex(console: Console, incident: dict) -> None:
+    """Annexes communes (reporters/guidance.py) : recommandation 2FA, réponse
+    à incident si elle n'est pas en tête, limites de l'audit."""
+    for rec in recommendations_block():
+        console.print(f"\n[bold]{_e(RECOMMENDATIONS_TITLE)} : {_e(rec['title'])}[/]")
+        console.print(f"  {_e(rec['text'])}")
+    if not incident["highlighted"]:
+        console.print(f"\n[bold]{_e(incident['title'])}[/]")
+        for line in _incident_lines(incident):
+            console.print(f"  {line}")
+    limits = audit_limits_block()
+    console.print(f"\n[bold]{_e(limits['title'])}[/]")
+    console.print(f"  [dim]{_e(limits['lead'])}[/]")
+    for item in limits["items"]:
+        console.print(f"  - {_e(item)}")
 
 
 class TerminalReporter(BaseReporter):
@@ -106,6 +136,14 @@ class TerminalReporter(BaseReporter):
                     console.print(f"     • {_e(f['message'])}  [dim]→ {_e(n['data'])}[/]")
             console.print()
 
+        # Réponse à incident mise en avant : indice de compromission relevé.
+        incident = incident_block(self.results)
+        if incident["highlighted"]:
+            console.print(Panel("\n".join(_incident_lines(incident)),
+                                title=_e(incident["title"].upper()),
+                                border_style="red"))
+            console.print()
+
         # Détail par check : on affiche la sévérité RÉELLE (max des findings)
         for result in self.results:
             if is_skipped(result):
@@ -158,6 +196,9 @@ class TerminalReporter(BaseReporter):
         console.print()
         console.print(f"[dim]Données CVE : {_e(sources['cve']['label'])}[/]")
         console.print(f"[dim]{_e(sources['epss']['label'])}[/]")
+        console.print(f"[dim]{_e(sources['kev']['label'])}[/]")
+
+        _print_guidance_annex(console, incident)
 
         console.print()
         return console.export_text()

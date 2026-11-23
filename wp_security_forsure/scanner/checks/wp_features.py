@@ -21,7 +21,11 @@ Inherits from BaseCheck. Covers:
      diagnostic côté serveur) : constat INFO « non évaluable de l'extérieur »
   6) Block directory : wp-json/wp/v2/block-directory/search (SSRF)
   7) Trackback detection : RDF in HTML head
-  8) Comments open : commenting enabled on homepage
+  8) Commentaires ouverts (SEC-20) : page d'accueil et un article réel, dont
+     l'URL vient de l'API REST (wp-json/wp/v2/posts?per_page=1, niveau 1) ou
+     d'un lien de la page d'accueil (niveau 0) ; formulaire (#commentform,
+     action vers wp-comments-post.php) et flux comments/feed/ (niveau 1).
+     Rien n'est jamais soumis : wp-comments-post.php n'est pas demandé.
   9) Link manager : wp-json/wp/v2/links endpoint
 Retirés (exigeaient un POST) : l'introspection XML-RPC system.listMethods et
 la sonde Heartbeat (admin-ajax.php), signalées par un constat INFO « non
@@ -29,12 +33,115 @@ la sonde Heartbeat (admin-ajax.php), signalées par un constat INFO « non
 """
 
 import re
-from typing import List, Optional
+from typing import List, Optional, Tuple
+from urllib.parse import urljoin, urlsplit
 
 import requests
 
+from .. import access_tiers
 from .base import BaseCheck, CheckResult
 from .signatures import xmlrpc_server_active
+
+
+# ── Article réel de la cible (partagé avec forms_upload) ─────────────────
+
+_UNSET = object()
+_A_TAG = re.compile(r"<a\b[^>]*>", re.I)
+_HREF = re.compile(r"""\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>]+))""", re.I)
+_REL_BOOKMARK = re.compile(r"""\brel\s*=\s*["'][^"']*\bbookmark\b""", re.I)
+_TITLE_LINK = re.compile(
+    r"""class\s*=\s*["'][^"']*\b(?:entry-title|post-title|wp-block-post-title)\b"""
+    r"""[^"']*["'][^>]*>\s*(<a\b[^>]*>)""", re.I)
+_POST_URL = re.compile(r"(?:[?&]p=\d+$|/\d{4}/\d{2}/(?:\d{2}/)?[^/?#]+/?$)")
+_NOT_ARTICLE = re.compile(
+    r"/(?:wp-admin|wp-login\.php|wp-content|wp-includes|wp-json|xmlrpc\.php|"
+    r"feed|comments|author|category|tag|page|search)(?:/|$)", re.I)
+
+COMMENT_FORM_ID = re.compile(r"""\bid\s*=\s*["']commentform["']""", re.I)
+COMMENT_FORM_ACTION = re.compile(
+    r"""<form\b[^>]*\baction\s*=\s*["'][^"']*wp-comments-post\.php""", re.I)
+_COMMENTS_CLOSED = re.compile(
+    r"comments?\s+(?:are\s+)?closed|commentaires?\s+(?:sont\s+)?ferm[ée]s", re.I)
+
+
+def comment_form_markers(body: str) -> List[str]:
+    """Marqueurs d'un formulaire de commentaire WordPress dans une page."""
+    markers = []
+    if COMMENT_FORM_ID.search(body or ""):
+        markers.append("formulaire #commentform")
+    if COMMENT_FORM_ACTION.search(body or ""):
+        markers.append("formulaire dont l'action vise wp-comments-post.php")
+    return markers
+
+
+def _href(tag: str) -> str:
+    m = _HREF.search(tag or "")
+    return (m.group(1) or m.group(2) or m.group(3) or "") if m else ""
+
+
+def _usable_article(check: BaseCheck, url: str) -> bool:
+    """URL d'article sur la cible, distincte de l'accueil, demandable dans le
+    mode courant (référencée, donc niveau 0 ou 1 sans --authorized)."""
+    if not isinstance(url, str) or not url.lower().startswith(("http://", "https://")):
+        return False
+    parts = urlsplit(url)
+    if (parts.hostname or "").lower() not in access_tiers.scope_hosts(check.target):
+        return False
+    if url.split("#", 1)[0].rstrip("/") == check.target.rstrip("/"):
+        return False
+    if _NOT_ARTICLE.search(parts.path or ""):
+        return False
+    return check.may_request(url)
+
+
+def _article_from_rest(check: BaseCheck) -> Optional[Tuple[str, str]]:
+    data, resp = check.get_json("wp-json/wp/v2/posts?per_page=1")
+    if resp is None or resp.status_code != 200 or not isinstance(data, list):
+        return None
+    for post in data:
+        link = post.get("link") if isinstance(post, dict) else None
+        if _usable_article(check, link):
+            return link, "API REST wp-json/wp/v2/posts?per_page=1"
+    return None
+
+
+def _article_from_home(check: BaseCheck) -> Optional[Tuple[str, str]]:
+    try:
+        resp = check.http_get("")
+    except Exception:
+        return None
+    if resp.status_code != 200:
+        return None
+    body = resp.text or ""
+    base = resp.url or check.target.rstrip("/") + "/"
+    tags = _A_TAG.findall(body)
+    candidates = [_href(t) for t in tags if _REL_BOOKMARK.search(t)]
+    candidates += [_href(m.group(1)) for m in _TITLE_LINK.finditer(body)]
+    candidates += [h for h in (_href(t) for t in tags)
+                   if _POST_URL.search(urljoin(base, h).split("#", 1)[0])]
+    for href in candidates:
+        url = urljoin(base, href).split("#", 1)[0]
+        if href and _usable_article(check, url):
+            return url, "lien de la page d'accueil"
+    return None
+
+
+def find_article(check: BaseCheck) -> Optional[Tuple[str, str]]:
+    """(URL, source) d'un article réel de la cible, ou None.
+
+    Source : la liste REST des articles (niveau 1), sinon un lien d'article
+    de la page d'accueil (niveau 0). Mémoïsé sur la session de l'audit : les
+    checks qui l'utilisent testent le même article.
+    """
+    cached = getattr(check.session, "_wpsf_article", _UNSET)
+    if cached is not _UNSET:
+        return cached
+    found = _article_from_rest(check) or _article_from_home(check)
+    try:
+        check.session._wpsf_article = found
+    except AttributeError:
+        pass
+    return found
 
 
 class WPFeaturesCheck(BaseCheck):
@@ -489,77 +596,103 @@ class WPFeaturesCheck(BaseCheck):
 
     # ── 9) Comments open ────────────────────────────────────────────────
 
-    def _check_comments_open(self) -> None:
-        """Check if commenting is enabled on the homepage."""
+    _COMMENTS_ADVICE = (
+        "Recommandation : les fermer s'ils ne servent pas (Réglages > "
+        "Discussion, et sur les contenus déjà publiés), une porte d'entrée "
+        "en moins.")
+
+    def _home_comment_signals(self) -> Tuple[List[str], bool, bool]:
+        """Indices de commentaires sur la page d'accueil : (lignes de preuve
+        si ouverts, formulaire réel vu, fermeture explicite)."""
         resp = self._safe_get("")
-        if resp is None:
+        if resp is None or "html" not in resp.headers.get("Content-Type", "").lower():
+            return [], False, False
+        body = resp.text or ""
+        markers = comment_form_markers(body)
+        loose_form = bool(re.search(r"<form[^>]*comment[^>]*>", body, re.I))
+        closed = bool(_COMMENTS_CLOSED.search(body))
+        comment_count = len(re.findall(r'id=["\']comment[-_]', body))
+        has_respond = bool(re.search(r'id=["\']respond["\']', body))
+        if not (markers or loose_form or has_respond
+                or (comment_count > 0 and not closed)):
+            return [], False, closed
+        lines = [f"Page d'accueil {self.target.rstrip('/')}/ :"]
+        lines += [f"  - {m}" for m in markers]
+        if loose_form and not markers:
+            lines.append("  - formulaire lié aux commentaires")
+        if has_respond:
+            lines.append("  - section #respond")
+        if comment_count > 0:
+            lines.append(f"  - {comment_count} élément(s) de commentaire")
+        return lines, bool(markers or loose_form), closed
+
+    def _comments_feed_line(self) -> Optional[str]:
+        """État du flux des commentaires (comments/feed/, niveau 1)."""
+        resp = self._safe_get("comments/feed/")
+        if resp is None or resp.status_code != 200:
+            return None
+        body = resp.text or ""
+        head = body[:4096].lower()
+        if ("<rss" not in head and "<feed" not in head) or self._is_soft404(resp):
+            return None
+        count = (len(re.findall(r"<item[\s>]", body, re.I))
+                 or len(re.findall(r"<entry[\s>]", body, re.I)))
+        return (f"Flux des commentaires comments/feed/ actif : {count} "
+                "commentaire(s) publié(s) dans le flux.")
+
+    def _check_comments_open(self) -> None:
+        """Commentaires ouverts sur la page d'accueil ou sur un article réel.
+
+        Lecture seule : le formulaire est seulement repéré, jamais soumis.
+        """
+        open_lines, real_form, home_closed = self._home_comment_signals()
+        closed_lines = (["Page d'accueil : commentaires explicitement fermés."]
+                        if home_closed and not open_lines else [])
+        url = self.target.rstrip("/") + "/"
+
+        article = find_article(self)
+        if article:
+            article_url, source = article
+            resp = None
+            try:
+                resp = self.http_get_url(article_url)
+            except Exception:
+                resp = None
+            if resp is not None and resp.status_code == 200:
+                body = resp.text or ""
+                markers = comment_form_markers(body)
+                if markers:
+                    open_lines += [f"Article {article_url} (source : {source}) :"]
+                    open_lines += [f"  - {m}" for m in markers]
+                    real_form, url = True, article_url
+                else:
+                    state = (" ; commentaires explicitement fermés"
+                             if _COMMENTS_CLOSED.search(body) else "")
+                    closed_lines.append(
+                        f"Article {article_url} (source : {source}) : aucun "
+                        f"formulaire de commentaire{state}.")
+
+        if not open_lines and not closed_lines:
             return
-
-        body = resp.text
-        content_type = resp.headers.get("Content-Type", "")
-
-        if "html" not in content_type.lower():
-            return
-
-        evidence_lines = []
-
-        # Check for comment form
-        has_comment_form = bool(
-            re.search(r'<form[^>]*comment[^>]*>', body, re.IGNORECASE)
-        )
-
-        # Check for comment closed message
-        comments_closed = bool(
-            re.search(
-                r'comments?\s+(?:are\s+)?closed',
-                body,
-                re.IGNORECASE,
-            )
-        )
-
-        # Check for comment-related CSS classes/elements
-        comment_count = len(re.findall(
-            r'id=["\']comment[-_]',
-            body,
-        ))
-
-        # Check for comment reply link / respond section
-        has_respond = bool(
-            re.search(r'id=["\']respond["\']', body)
-        )
-
-        if has_comment_form or (comment_count > 0 and not comments_closed) or has_respond:
-            evidence_lines.append("Commenting appears to be enabled on the homepage")
-
-            if has_comment_form:
-                evidence_lines.append("  - Comment form detected")
-            if has_respond:
-                evidence_lines.append("  - #respond section found")
-            if comment_count > 0:
-                evidence_lines.append(f"  - {comment_count} comment elements found")
-
-            evidence_lines.append(
-                "Impact: Spam vector, potential CSRF, "
-                "comment-based phishing attacks"
-            )
-
-            evidence = "\n".join(evidence_lines)
-
+        feed = self._comments_feed_line()
+        if open_lines:
             self._result.add_finding(
-                message="Comments enabled on homepage",
-                severity="MEDIUM",
-                evidence=evidence,
-                url=self.target.rstrip("/"),
+                message="Commentaires ouverts (formulaire de commentaire visible)",
+                severity="LOW",
+                evidence="\n".join(
+                    open_lines + ([feed] if feed else [])
+                    + ["Lecture seule : aucun commentaire n'a été soumis.",
+                       "Un formulaire ouvert reçoit spam, liens malveillants et "
+                       "tentatives d'injection.", self._COMMENTS_ADVICE]),
+                url=url,
+                confidence="confirmed" if real_form else "potential",
             )
-
-        elif comments_closed:
-            # Confirmed closed, good, but worth noting
-            evidence = "Comments are explicitly closed on homepage"
+        else:
             self._result.add_finding(
-                message="Comments disabled on homepage",
+                message="Commentaires fermés sur les pages testées",
                 severity="INFO",
-                evidence=evidence,
-                url=self.target.rstrip("/"),
+                evidence="\n".join(closed_lines + ([feed] if feed else [])),
+                url=url,
             )
 
     # ── 10) Link Manager ────────────────────────────────────────────────

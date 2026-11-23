@@ -44,9 +44,16 @@ wp-security-forsure audit https://exemple.fr
 wp-security-forsure audit https://exemple.fr --output rapport.html
 wp-security-forsure audit https://exemple.fr --checks fingerprint,vulnerability_scan --format json
 wp-security-forsure audit https://exemple.fr --authorized   # seulement avec l'autorisation écrite du propriétaire
+wp-security-forsure refresh-kev    # télécharge le catalogue CISA KEV (réseau, à la demande seulement)
+wp-security-forsure refresh-epss   # télécharge les scores EPSS (réseau, à la demande seulement)
 ```
 
 Rapports en texte terminal, en JSON ou en page HTML autonome, rédigés en français.
+Chaque rapport se termine par ce que l'audit ne peut pas voir, des conseils de durcissement des comptes
+(double authentification sur chaque administrateur) et une procédure de réponse à incident, remontée en
+tête quand un constat indique une compromission. En JSON : `audit_limits`, `recommendations` et
+`incident_response`. Les identifiants relevés sont masqués (`ju***`) sauf s'ils sont eux-mêmes le constat
+(`admin`, `test`...) ; `mask_usernames: false` dans la configuration les affiche.
 
 | Code de sortie | Sens |
 |---|---|
@@ -63,11 +70,16 @@ Chaque constat porte un niveau de confiance. `confirmed` signifie que la preuve 
 `wp-security-forsure list` affiche le catalogue à jour avec ses descriptions. Les contrôles sont
 regroupés selon ce qu'un attaquant y gagne :
 
-- Prise de contrôle et intrusion : empreinte des composants et versions, CVE connues, exposition
+- Prise de contrôle et intrusion : empreinte des composants et versions, CVE connues (relevées en critique
+  quand elles figurent au catalogue CISA des vulnérabilités activement exploitées), version du cœur marquée
+  insecure par wordpress.org ou en retard sur sa branche, plugins fermés sur wordpress.org ou sans mise à
+  jour depuis 2 ans (seuil propre à l'outil), outils de maintenance laissés en production (remise à zéro de
+  base, gestionnaires de fichiers, consoles SQL), noms de comptes à risque (`admin`, `test`, le nom du
+  site), exposition
   de l'API REST batch (wp2shell), routes REST de plugins qui acceptent une URL, plugins nullés, surface
   d'attaque des plugins courants, exposition de la connexion et énumération d'utilisateurs, fonctions
   WordPress (XML-RPC, oEmbed, mots de passe d'application), fichiers et dumps exposés, traces de code
-  injecté, cloaking et spam SEO.
+  injecté, cloaking et spam SEO, commentaires ouverts sur un article.
 - Exposition de données : contenus et utilisateurs de l'API REST, cookies et sessions, scripts
   tiers, configuration TLS, authentification des e-mails (SPF, DKIM, DMARC), récepteurs de webhooks.
 - Durcissement : en-têtes de sécurité, configuration serveur, détection de WAF et de CDN, prise de
@@ -100,13 +112,15 @@ En plus de la cible, un audit contacte :
 | Hôte | Pourquoi | Quand |
 |---|---|---|
 | `www.wpvulnerability.net` | Vulnérabilités connues de chaque composant détecté | Pour chaque composant absent du cache local ou en cache depuis plus de 7 jours |
-| `api.wordpress.org` | Fiche du plugin (repérer les copies nullées) | Quand un plugin est détecté |
+| `api.wordpress.org` | Statut des versions du cœur (`stable-check`, `version-check`) | À chaque audit, cache de 24 heures |
+| `api.wordpress.org` | Fiche du plugin : fermé, abandonné, copie nullée | Pour chaque plugin détecté, cache de 7 jours |
 | Hôtes référencés par la page d'accueil | Services tiers abandonnés (contrôle de prise de contrôle) | À chaque audit (DNS et `GET`, mêmes gardes) |
 | Votre résolveur DNS | Enregistrements SPF, DKIM et DMARC | À chaque audit |
 | `crt.sh` | Énumération des sous-domaines | Seulement avec `takeover_enum: true` dans la configuration |
 | Fichier de données EPSS | Scores de prédiction d'exploitation | Seulement avec `wp-security-forsure refresh-epss` |
+| `www.cisa.gov` | Catalogue des vulnérabilités activement exploitées (KEV) | Seulement avec `wp-security-forsure refresh-kev` |
 
-Le cache CVE et le snapshot EPSS sont dans votre dossier de cache utilisateur
+Le cache CVE, les instantanés EPSS et KEV et le cache wordpress.org sont dans votre dossier de cache utilisateur
 (`%LOCALAPPDATA%\wp_security_forsure` sous Windows, `~/.cache/wp_security_forsure` ailleurs), ou dans
 `WP_SECURITY_FORSURE_CACHE_DIR` si la variable est définie. Les rapports indiquent la provenance de
 leurs données de vulnérabilités et leur âge.
@@ -122,11 +136,11 @@ supprimez-les à la fin de la mission.
 
 - Vulnérabilités : [WPVulnerability](https://www.wpvulnerability.net/), interrogé à l'exécution.
 - Prédiction d'exploitation : [EPSS de FIRST](https://www.first.org/epss/), téléchargé à la demande.
+- Exploitation active : [catalogue KEV de la CISA](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), téléchargé à la demande.
+- Statut du cœur et des plugins : l'[API publique de WordPress.org](https://api.wordpress.org/).
 
 ## Feuille de route
 
-- Catalogue CISA des vulnérabilités activement exploitées et contrôle « en retard sur sa branche » pour
-  la version du cœur.
 - Plusieurs profils de visite (arrivée depuis un moteur de recherche, mobile, visiteur qui revient)
   dont on compare les scripts, les iframes et les redirections.
 - Une passe facultative en navigateur isolé pour les injections côté client.

@@ -27,6 +27,14 @@ COMMON_PLUGINS = [
     "wp-store-locator", "google-analytics-for-wordpress", "pixelyoursite",
     "shortpixel-image-optimiser", "smush", "wp-rocket", "kadence-blocks",
     "spectra", "otter-blocks", "elementskit-lite",
+    # Extensions fermées et non corrigées en 2026 (SEC-16) et extension à
+    # faille corrigée récente : à repérer même quand la page ne les cite pas.
+    "advance-guest-post", "ultimate-addons-for-contact-form-7", "reset-database",
+    # Outillage de maintenance (maintenance_tools.py, check plugin_status) :
+    # rien de chargé sur les pages publiques, seul le readme.txt le révèle.
+    "wp-database-reset", "advanced-wp-reset", "wp-file-manager",
+    "file-manager-advanced", "filester", "wp-dbmanager", "ari-adminer",
+    "wp-phpmyadmin-extension", "debug-bar", "debug-bar-console",
 ]
 
 COMMON_THEMES = [

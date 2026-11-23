@@ -10,6 +10,8 @@ Structure orientée client :
 import html
 from datetime import datetime, timezone
 from . import BaseReporter
+from .guidance import (RECOMMENDATIONS_TITLE, audit_limits_block, incident_block,
+                       recommendations_block)
 from .impact import exposure_surface, narrative, harvest_example
 from ..access_tiers import AUTHORIZED_WARNING, SKIPPED_LABEL, access_level
 from ..status import (ERROR_LABEL, audit_is_complete, error_results,
@@ -277,6 +279,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                           color:var(--ink-600); font-size:.9rem; }}
   details.conformes li svg.ic {{ color:var(--sev-low); width:15px; height:15px; margin-top:3px; }}
 
+  /* Textes de conduite (reporters/guidance.py) */
+  .card.incident {{ border-left:4px solid var(--sev-critical); }}
+  .card.incident.annex {{ border-left-color:var(--ink-300); }}
+  .card ol.steps {{ margin:8px 0 0 22px; }}
+  .card ol.steps li {{ margin:5px 0; }}
+  .card ul.plain {{ margin:8px 0 0 18px; }}
+  .card ul.plain li {{ margin:5px 0; }}
+  .card code {{ font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.86em; }}
+
   footer {{ max-width:960px; margin:0 auto; padding:26px 20px 34px; color:var(--ink-400);
             font-size:.8rem; border-top:1px solid var(--ink-200); margin-top:24px; }}
 
@@ -307,9 +318,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </header>
 <div class="container">
 {verdict_html}
+{incident_html}
 {surface_html}
 {vulns_html}
 {methodo_html}
+{guidance_html}
 {conformes_html}
 </div>
 <footer>
@@ -318,6 +331,37 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </footer>
 </body>
 </html>"""
+
+
+def _incident_card(block: dict) -> str:
+    """Carte de réponse à incident : indices, étapes ordonnées, avertissement."""
+    indicators = "".join(
+        f"<li>{_sev_pill(i['severity'])} {html.escape(str(i['message']))} "
+        f"<span class='src'>({html.escape(str(i['check']))})</span></li>"
+        for i in block["indicators"][:8])
+    steps = "".join(f"<li>{html.escape(s)}</li>" for s in block["steps"])
+    cls = "card incident" + ("" if block["highlighted"] else " annex")
+    return (f"<div class='{cls}'><p><strong>{html.escape(block['lead'])}</strong></p>"
+            + (f"<ul class='plain'>{indicators}</ul>" if indicators else "")
+            + f"<ol class='steps'>{steps}</ol>"
+            f"<p><strong>{html.escape(block['warning'])}</strong></p></div>")
+
+
+def _guidance_annex(incident: dict, incident_card: str) -> str:
+    """Annexes communes : recommandation 2FA, réponse à incident quand elle
+    n'est pas en tête, « Ce que cet audit ne peut pas voir »."""
+    recs = "".join(
+        f"<div class='card'><p><strong>{html.escape(r['title'])}</strong></p>"
+        f"<p>{html.escape(r['text'])}</p></div>" for r in recommendations_block())
+    out = _sec("shield", RECOMMENDATIONS_TITLE, "Comptes administrateurs") + recs
+    if not incident["highlighted"]:
+        out += _sec("alert", "Annexe", html.escape(incident["title"])) + incident_card
+    limits = audit_limits_block()
+    items = "".join(f"<li>{html.escape(i)}</li>" for i in limits["items"])
+    out += (_sec("clipboard", "Annexe", html.escape(limits["title"]))
+            + f"<div class='card'><p>{html.escape(limits['lead'])}</p>"
+            f"<ul class='plain'>{items}</ul></div>")
+    return out
 
 
 class HTMLReporter(BaseReporter):
@@ -361,7 +405,8 @@ class HTMLReporter(BaseReporter):
         sources_html = (
             "<p><strong>Données de vulnérabilités :</strong> "
             f"CVE {html.escape(ds['cve']['label'])}. "
-            f"{html.escape(ds['epss']['label'])}.</p>")
+            f"{html.escape(ds['epss']['label'])}. "
+            f"{html.escape(ds['kev']['label'])}.</p>")
 
         # ── Annexe : méthodologie & périmètre (repoussée après les constats) ──
         methodo_html = f"""
@@ -618,6 +663,13 @@ class HTMLReporter(BaseReporter):
     <ul>{info_items or '<li>-</li>'}</ul>
   </details>"""
 
+        # ── Textes de conduite communs (reporters/guidance.py) ──
+        incident = incident_block(self.results)
+        incident_card = _incident_card(incident)
+        incident_html = (_sec("alert", "Urgence", html.escape(incident["title"]))
+                         + incident_card) if incident["highlighted"] else ""
+        guidance_html = _guidance_annex(incident, incident_card)
+
         return HTML_TEMPLATE.format(
             target=html.escape(str(self.target)),
             date=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
@@ -626,4 +678,6 @@ class HTMLReporter(BaseReporter):
             vulns_html=vulns_html,
             methodo_html=methodo_html,
             conformes_html=conformes_html,
+            incident_html=incident_html,
+            guidance_html=guidance_html,
         )

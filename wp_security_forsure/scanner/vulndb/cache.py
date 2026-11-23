@@ -1,6 +1,7 @@
 """Cache local SQLite des réponses wpvulnerability (TTL + fallback stale).
 
-Le cache CVE et le snapshot EPSS vivent dans le dossier de cache de
+Le cache CVE, le snapshot EPSS, l'instantané CISA KEV et le cache des
+réponses api.wordpress.org vivent dans le dossier de cache de
 l'utilisateur, jamais dans le dossier du paquet (lecture seule ou partagé
 après une installation pip) :
   - Windows : %LOCALAPPDATA%\\wp_security_forsure
@@ -46,6 +47,16 @@ def vulncache_path() -> Path:
 
 def epss_path() -> Path:
     return user_cache_dir() / "epss.csv"
+
+
+def kev_path() -> Path:
+    """Instantané du catalogue CISA KEV (commande refresh-kev)."""
+    return user_cache_dir() / "kev.json"
+
+
+def wporg_cache_path() -> Path:
+    """Cache des réponses api.wordpress.org (cœur 24 h, extensions 7 jours)."""
+    return user_cache_dir() / "wporg.sqlite"
 
 
 class VulnCache:

@@ -5,5 +5,7 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
 Vulnerability data is fetched at run time from WPVulnerability
 (https://www.wpvulnerability.net/). Exploit prediction scores come from the
-EPSS model by FIRST (https://www.first.org/epss/). Neither dataset is
-bundled in this distribution.
+EPSS model by FIRST (https://www.first.org/epss/). The Known Exploited
+Vulnerabilities catalogue is published by CISA (https://www.cisa.gov/, CC0).
+Core and plugin status come from the WordPress.org API. None of these
+datasets is bundled in this distribution.

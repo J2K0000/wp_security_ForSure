@@ -3,9 +3,11 @@ comme « plugin absent = nullé »."""
 import responses
 from wp_security_forsure.scanner.checks.null_plugins import NulledPluginsCheck, KNOWN_NULLED_PLUGINS
 from tests.conftest import make_check
+from wp_security_forsure.scanner.vulndb.wporg import plugin_info_url
 
-WPORG = "https://api.wordpress.org/plugins/info/1.0/contact-form-7.json"
-REVSLIDER_WPORG = "https://api.wordpress.org/plugins/info/1.0/revslider.json"
+# Client wordpress.org partagé (vulndb.wporg) : API 1.2 plugin_information.
+WPORG = plugin_info_url("contact-form-7")
+REVSLIDER_WPORG = plugin_info_url("revslider")
 
 
 def _crit(findings):
@@ -118,3 +120,22 @@ def test_real_content_marker_in_readme_stays_confirmed():
     marker = [f for f in findings if "marqueur de nullé" in f["message"]]
     assert marker, findings
     assert marker[0].get("confidence", "confirmed") == "confirmed"
+
+
+@responses.activate
+def test_closed_plugin_served_as_404_by_api_1_2_is_seen_closed():
+    """API 1.2 : une extension fermée est servie en HTTP 404 avec
+    `error: closed` (forme réelle, fixture reset-database) : le client
+    partagé la voit fermée, pas « indéterminée »."""
+    import json
+    from pathlib import Path
+    NulledPluginsCheck._wp_org_cache.clear()
+    body = json.loads((Path(__file__).parent / "fixtures" / "wporg_kev"
+                       / "wp_reset-database.json").read_text(encoding="utf-8"))
+    body = dict(body, slug="contact-form-7")
+    responses.add(responses.GET, WPORG, json=body, status=404)
+    chk = make_check(NulledPluginsCheck)
+    plugin = {"slug": "contact-form-7", "name": "Contact Form 7", "is_premium": False}
+    findings = chk._check_wp_org(plugin, {"Version": "5.0"}, "5.0")
+    closed = [f for f in findings if "FERMÉ" in f["message"]]
+    assert len(closed) == 1 and closed[0]["confidence"] == "potential"

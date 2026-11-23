@@ -43,9 +43,16 @@ wp-security-forsure audit https://example.com
 wp-security-forsure audit https://example.com --output report.html
 wp-security-forsure audit https://example.com --checks fingerprint,vulnerability_scan --format json
 wp-security-forsure audit https://example.com --authorized   # only with the owner's written permission
+wp-security-forsure refresh-kev    # download the CISA KEV catalogue (network, on request only)
+wp-security-forsure refresh-epss   # download EPSS scores (network, on request only)
 ```
 
 Reports come as terminal text, JSON or a standalone HTML page. Report text is written in French.
+Every report ends with what the audit cannot see, account hardening advice (two-factor authentication
+on every administrator) and an incident response procedure, moved to the top when a finding points to a
+compromise. In JSON they sit under `audit_limits`, `recommendations` and `incident_response`.
+Usernames found during the audit are masked (`ju***`) unless they are themselves the finding
+(`admin`, `test`...); set `mask_usernames: false` in the configuration to see them.
 
 | Exit code | Meaning |
 |---|---|
@@ -62,10 +69,14 @@ Each finding carries a confidence level. `confirmed` means the evidence is deter
 `wp-security-forsure list` prints the current catalogue with descriptions. Checks are grouped by
 what an attacker gains:
 
-- Takeover and intrusion: component and version fingerprint, known CVEs, REST API batch exposure
+- Takeover and intrusion: component and version fingerprint, known CVEs (raised to critical when listed
+  in the CISA Known Exploited Vulnerabilities catalogue), a core version that wordpress.org marks insecure
+  or that lags behind its branch, plugins closed on wordpress.org or not updated for 2 years (the tool's
+  threshold), maintenance tools left in production (database reset, file managers, SQL consoles),
+  risky account names (`admin`, `test`, the site's own name), REST API batch exposure
   (wp2shell), plugin REST routes that accept a user URL, nulled plugins, notable plugin attack surface,
   login exposure and user enumeration, WordPress features (XML-RPC, oEmbed, application passwords),
-  exposed files and database dumps, signs of injected code, cloaking and SEO spam.
+  exposed files and database dumps, signs of injected code, cloaking and SEO spam, open comments on an article.
 - Data exposure: REST API content and users, cookies and sessions, third-party scripts,
   TLS configuration, email authentication (SPF, DKIM, DMARC), webhook receivers.
 - Hardening: security headers, server configuration, WAF and CDN detection, subdomain takeover,
@@ -96,13 +107,15 @@ Besides the target, an audit contacts:
 | Host | Why | When |
 |---|---|---|
 | `www.wpvulnerability.net` | Known vulnerabilities for each detected component | For each component not in the local cache or cached more than 7 days ago |
-| `api.wordpress.org` | Plugin information (to spot nulled copies) | When a plugin is detected |
+| `api.wordpress.org` | Core release status (`stable-check`, `version-check`) | Every audit, cached 24 hours |
+| `api.wordpress.org` | Plugin information: closed, abandoned, nulled copies | For each detected plugin, cached 7 days |
 | Hosts referenced by the home page | Dangling third-party services (takeover check) | Every audit (DNS and `GET`, same guards) |
 | Your DNS resolver | SPF, DKIM and DMARC records | Every audit |
 | `crt.sh` | Subdomain enumeration | Only with `takeover_enum: true` in the configuration |
 | EPSS data file | Exploit prediction scores | Only when you run `wp-security-forsure refresh-epss` |
+| `www.cisa.gov` | Known Exploited Vulnerabilities catalogue | Only when you run `wp-security-forsure refresh-kev` |
 
-The CVE cache and the EPSS snapshot live in your user cache folder
+The CVE cache, the EPSS and KEV snapshots and the wordpress.org cache live in your user cache folder
 (`%LOCALAPPDATA%\wp_security_forsure` on Windows, `~/.cache/wp_security_forsure` elsewhere),
 or in `WP_SECURITY_FORSURE_CACHE_DIR` if set. Reports state where their vulnerability data came
 from and how old it is.
@@ -117,10 +130,11 @@ keep reports private and delete them when the engagement ends.
 
 - Vulnerability data: [WPVulnerability](https://www.wpvulnerability.net/), queried at run time.
 - Exploit prediction: [EPSS by FIRST](https://www.first.org/epss/), downloaded on request.
+- Active exploitation: [CISA Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), downloaded on request.
+- Core and plugin status: the public [WordPress.org API](https://api.wordpress.org/).
 
 ## Roadmap
 
-- CISA Known Exploited Vulnerabilities and "behind its branch" checks for the core version.
 - Several visitor profiles (search-engine referer, mobile, returning visitor) whose scripts, iframes
   and redirects are compared.
 - An optional sandboxed browser pass for client-side injections.

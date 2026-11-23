@@ -28,6 +28,7 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
+from ..redact import is_risky_username, mask_email, mask_username, usernames_masked
 from .base import BaseCheck, CheckResult
 
 
@@ -83,6 +84,10 @@ class MultisiteCheck(BaseCheck):
     ]
 
     # ── Public API ──────────────────────────────────────────────────────
+
+    def _user(self, name) -> str:
+        """Nom d'utilisateur masqué dans les preuves (RGPD), sauf nom à risque."""
+        return mask_username(name, self.target, usernames_masked(self.config))
 
     def run(self) -> CheckResult:
         """Execute the multisite security audit."""
@@ -467,8 +472,12 @@ class MultisiteCheck(BaseCheck):
                 f"Users exposed: {len(users)} returned "
                 f"(X-WP-Total: {total_users})",
                 f"User IDs: {user_ids[:20]}",
-                f"User slugs: {user_slugs[:20]}",
+                f"User slugs: {[self._user(s) for s in user_slugs[:20]]}",
             ]
+            risky = sorted({s for s in user_slugs if is_risky_username(s, self.target)})
+            if risky:
+                evidence_parts.append(
+                    f"Noms à risque exposés : {risky} (supprimer ou renommer ces comptes)")
             if has_email:
                 evidence_parts.append(
                     "EMAIL ADDRESSES EXPOSED, critical data leak"
@@ -551,12 +560,12 @@ class MultisiteCheck(BaseCheck):
                 msg += ", this is typically the network super admin"
 
             evidence_parts = [
-                f"User: {u_data.get('name', 'unknown')} "
-                f"(slug: {u_data.get('slug', '')})",
+                f"User: {self._user(u_data.get('name', 'unknown'))} "
+                f"(slug: {self._user(u_data.get('slug', ''))})",
             ]
             if has_email:
                 evidence_parts.append(
-                    f"Email: {u_data['email']}"
+                    f"Email: {mask_email(u_data['email'], self.target, usernames_masked(self.config))}"
                 )
             if is_super:
                 evidence_parts.append(

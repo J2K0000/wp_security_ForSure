@@ -1,15 +1,20 @@
 """Fraîcheur des données de vulnérabilités : source des CVE, date des fiches
-en cache utilisées et âge du snapshot EPSS. Produit par vulnerability_scan,
-lu par les reporters JSON, HTML et terminal (structure unique)."""
+en cache utilisées, âge du snapshot EPSS et date de l'instantané CISA KEV.
+Produit par vulnerability_scan, lu par les reporters JSON, HTML et terminal
+(structure unique)."""
 
 import time
 from datetime import datetime, timezone
 from typing import Iterable, Optional
 
+from .kev import KEV_SOURCE
+
 CVE_SOURCE = "wpvulnerability.net"
 EPSS_ABSENT_LABEL = ("EPSS absent : probabilité d'exploitation non prise en "
                      "compte (commande refresh-epss pour la télécharger)")
 EPSS_NOT_USED_LABEL = "EPSS non consulté : aucun composant versionné à apparier"
+KEV_ABSENT_LABEL = "KEV absent : lancer refresh-kev"
+KEV_NOT_USED_LABEL = "KEV non consulté : aucun composant versionné à apparier"
 
 
 def _iso(ts: Optional[int]) -> Optional[str]:
@@ -78,9 +83,38 @@ def epss_section(index, now: Optional[float] = None) -> dict:
             "label": label}
 
 
-def build(entries, epss_index, now: Optional[float] = None, missing: int = 0) -> dict:
+def kev_section(index, now: Optional[float] = None) -> dict:
+    """État de l'instantané CISA KEV utilisé (`index` None = non consulté)."""
+    empty = {"source": KEV_SOURCE, "present": None, "catalog_version": None,
+             "snapshot_date": None, "age_days": None, "date_source": None,
+             "entries": None}
+    if index is None:
+        return dict(empty, label=KEV_NOT_USED_LABEL)
+    if not getattr(index, "present", False):
+        return dict(empty, present=False, label=KEV_ABSENT_LABEL)
+    snap = getattr(index, "snapshot_date", None)
+    age = None
+    if snap is not None:
+        today = datetime.fromtimestamp(now if now is not None else time.time(),
+                                       timezone.utc).date()
+        age = (today - snap).days
+    version = getattr(index, "catalog_version", None)
+    if snap is None:
+        label = "Catalogue CISA KEV présent, date inconnue"
+    else:
+        label = f"Catalogue CISA KEV du {snap.isoformat()} (âge : {age} jours"
+        label += f", version {version})" if version else ")"
+    return dict(empty, present=True, catalog_version=version,
+                snapshot_date=snap.isoformat() if snap else None,
+                age_days=age, date_source=getattr(index, "date_source", None),
+                entries=getattr(index, "count", None), label=label)
+
+
+def build(entries, epss_index, now: Optional[float] = None, missing: int = 0,
+          kev_index=None) -> dict:
     return {"cve": cve_section(entries, missing=missing),
-            "epss": epss_section(epss_index, now)}
+            "epss": epss_section(epss_index, now),
+            "kev": kev_section(kev_index, now)}
 
 
 def not_consulted() -> dict:
@@ -88,7 +122,7 @@ def not_consulted() -> dict:
     cve = cve_section([])
     cve["label"] = (f"{CVE_SOURCE} : non consulté "
                     "(contrôle vulnerability_scan non exécuté)")
-    return {"cve": cve, "epss": epss_section(None)}
+    return {"cve": cve, "epss": epss_section(None), "kev": kev_section(None)}
 
 
 def from_results(results) -> dict:

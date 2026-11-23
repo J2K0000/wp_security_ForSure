@@ -19,11 +19,12 @@ from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from .base import BaseCheck, CheckResult
+from ..vulndb import wporg
 
 logger = logging.getLogger(__name__)
 
-# Sentinel : statut wp.org indéterminé (erreur réseau, rate-limit, non-200).
-# À distinguer de None (= plugin définitivement absent du repository).
+# Sentinel : statut wp.org indéterminé (erreur réseau, rate-limit, réponse
+# non concluante). À distinguer de None (= plugin absent du repository).
 _WP_ORG_UNKNOWN = object()
 
 # ── Sites de redistribution de nullés (blacklist) ──────────────────────────
@@ -785,7 +786,7 @@ class NulledPluginsCheck(BaseCheck):
                         f"Un plugin gratuit devrait être dans le repository officiel. "
                         f"Ceci est une heuristique d'absence, pas une preuve de compromission."
                     ),
-                    "url": f"https://api.wordpress.org/plugins/info/1.0/{wp_org_slug}.json",
+                    "url": wporg.plugin_info_url(wp_org_slug),
                     "confidence": "potential",
                 })
             elif plugin.get("wp_org_slug") is not None:
@@ -807,7 +808,7 @@ class NulledPluginsCheck(BaseCheck):
                         f"Version installée ne recevra aucun correctif de sécurité. "
                         f"Le retrait ne prouve pas, à lui seul, une compromission active."
                     ),
-                    "url": f"https://api.wordpress.org/plugins/info/1.0/{wp_org_slug}.json",
+                    "url": wporg.plugin_info_url(wp_org_slug),
                     "confidence": "potential",
                 })
             return findings
@@ -858,34 +859,30 @@ class NulledPluginsCheck(BaseCheck):
         return findings
 
     def _fetch_wp_org_plugin(self, slug: str) -> Optional[dict]:
-        """Interroge l'API WordPress.org pour un slug de plugin."""
-        # Cache hit ?
+        """Fiche WordPress.org d'un slug de plugin (client partagé
+        vulndb.wporg, API 1.2, cache disque 7 jours).
+
+        Retourne la fiche (dict, avec `closed` si fermée), None si le plugin
+        est absent du répertoire (réponse JSON `error` hors fermeture), ou
+        _WP_ORG_UNKNOWN si rien n'est concluant (réseau, 429, 5xx, corps non
+        JSON) : une erreur ne prouve pas l'absence."""
         if slug in self._wp_org_cache:
             return self._wp_org_cache[slug]
-
-        url = f"https://api.wordpress.org/plugins/info/1.0/{slug}.json"
-        try:
-            resp = self.http_get_url(url, timeout=15)
-        except Exception as e:
-            logger.warning(f"WP.org API error for slug '{slug}': {e}")
-            self._wp_org_cache[slug] = _WP_ORG_UNKNOWN  # réseau : indéterminé
-            return _WP_ORG_UNKNOWN
-
-        if resp.status_code != 200:
-            # 404/429/5xx : ne prouve PAS l'absence du plugin → indéterminé
-            self._wp_org_cache[slug] = _WP_ORG_UNKNOWN
-            return _WP_ORG_UNKNOWN
-        try:
-            data = resp.json()
-        except Exception:
-            self._wp_org_cache[slug] = _WP_ORG_UNKNOWN
-            return _WP_ORG_UNKNOWN
-        # 200 + erreur/null = plugin définitivement absent du repository.
-        if not data or "error" in data:
-            self._wp_org_cache[slug] = None
-            return None
-        self._wp_org_cache[slug] = data
-        return data
+        directory = getattr(self, "_wporg", None)
+        if directory is None:
+            directory = self._wporg = wporg.open_directory(
+                self.http_get_url, timeout=self.config.get("timeout", 15))
+        record = directory.plugin(slug)
+        if record.state == wporg.UNKNOWN:
+            value = _WP_ORG_UNKNOWN
+        elif record.state == wporg.ABSENT:
+            value = None
+        else:
+            value = dict(record.data)
+            if record.state == wporg.CLOSED:
+                value["closed"] = True
+        self._wp_org_cache[slug] = value
+        return value
 
     # ── Helper: License files for premium plugins ────────────────────────
 

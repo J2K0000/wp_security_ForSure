@@ -38,6 +38,8 @@ _CLASS_META = {k: (emoji, label, blurb) for k, emoji, label, blurb in ACCESS_CLA
 
 # ── Classe par défaut selon le check (signal le plus fiable) ─────────────────
 _CLASS_BY_CHECK = {
+    "core_branch": "recon",
+    "plugin_status": "recon",
     "rest_batch": "controle",
     "auth_bypass_state": "controle",
     "forms_upload": "controle",

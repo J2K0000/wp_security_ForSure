@@ -5,6 +5,7 @@ import json
 from wp_security_forsure import TOOL_NAME, __version__
 from datetime import datetime, timezone
 from . import BaseReporter
+from .guidance import audit_limits_block, incident_block, recommendations_block
 from .impact import exposure_surface, narrative
 from ..redact import redact_obj
 from ..access_tiers import access_level
@@ -31,6 +32,8 @@ class JSONReporter(BaseReporter):
             entry["impact"] = narrative(check_name, f["message"], f)
         if f.get("scoring"):
             entry["scoring"] = f["scoring"]
+        if f.get("kev"):
+            entry["kev"] = f["kev"]   # catalogue CISA KEV : exploitation active
         return entry
 
     def generate(self) -> str:
@@ -109,6 +112,13 @@ class JSONReporter(BaseReporter):
             }
             for b in exposure_surface(done)
         ]
+
+        # ── Textes de conduite communs aux trois rapports (guidance.py) ──
+        # incident_response : mis en avant (placement « en_tete ») sur indice
+        # de compromission, sinon annexe « En cas de compromission ».
+        data["incident_response"] = incident_block(self.results)
+        data["audit_limits"] = audit_limits_block()
+        data["recommendations"] = recommendations_block()
 
         # Dernier passage avant écriture : masquage des secrets sur tout le
         # document (défense en profondeur, en plus du masquage à la source).

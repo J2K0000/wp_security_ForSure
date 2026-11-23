@@ -24,17 +24,113 @@ Inherits from BaseCheck. Covers:
      --authorized ; sans lui, seuls les assets référencés par une page
      récupérée). Les empreintes PHP (fichier principal d'une extension) sont
      retirées : un GET les exécuterait (constat INFO « non évaluable »).
-  7) Admin username presence, ?author=1 redirect check
+  7) Comptes à risque (SEC-20) : la liste unique des noms à risque
+     (redact.risky_usernames : génériques et dérivés du domaine) appliquée à
+     toutes les sources d'énumération : ?author=N, API REST wp/v2/users
+     (liste et fiches), oEmbed de la page d'accueil (author_name, niveau 1),
+     plan de site des auteurs wp-sitemap-users-1.xml (lu seulement s'il est
+     référencé par wp-sitemap.xml, sinon niveau 2 sous --authorized). Un
+     constat par nom à risque, toutes sources réunies. Les autres noms sont
+     masqués dans les preuves (redact.mask_username, clé mask_usernames).
   8) SSL enforcement, HTTP-to-HTTPS redirect on login page
 """
 
 import re
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, NamedTuple, Optional
+from urllib.parse import quote, urlsplit
 
 import requests
 
+from .. import access_tiers
+from ..redact import (GENERIC_USERNAMES, is_risky_username, mask_username,
+                      normalize_username, usernames_masked)
 from .base import BaseCheck, CheckResult
 from .signatures import xmlrpc_server_active
+
+
+class UserSighting(NamedTuple):
+    """Nom d'utilisateur relevé sur une source d'énumération.
+
+    login : True pour un identifiant public (slug, nicename : dérivé de
+    l'identifiant de connexion), False pour un simple nom affiché."""
+    name: str
+    source: str
+    login: bool
+
+
+RISKY_ACCOUNT_PREFIX = "Compte à risque exposé par énumération"
+RISKY_ACCOUNT_ADVICE = ("Recommandation : supprimer ou renommer ce compte, et "
+                        "réattribuer ses contenus à un compte nominatif.")
+
+
+def risky_account_message(name: str) -> str:
+    """Message stable (même texte pour tous les checks : le moteur
+    déduplique par message et URL)."""
+    return f"{RISKY_ACCOUNT_PREFIX} : « {normalize_username(name)} »"
+
+
+def report_risky_accounts(result: CheckResult, target: str,
+                          sightings: Iterable[UserSighting]) -> None:
+    """Un constat par nom à risque vu sur au moins une source.
+
+    HIGH (confirmé) si le nom est un identifiant public d'auteur : toutes les
+    sources interrogées ne listent que des auteurs de contenus publiés.
+    MEDIUM (à vérifier) s'il n'apparaît que comme nom affiché : l'identifiant
+    de connexion peut alors différer.
+    """
+    grouped: Dict[str, List[UserSighting]] = {}
+    for s in sightings:
+        if is_risky_username(s.name, target):
+            grouped.setdefault(normalize_username(s.name), []).append(s)
+    for name, items in grouped.items():
+        is_login = any(s.login for s in items)
+        reason = ("nom générique, essayé en premier par les attaques par force "
+                  "brute" if name in GENERIC_USERNAMES else
+                  "nom dérivé du domaine du site, parmi les premiers essayés")
+        sources = list(dict.fromkeys(
+            f"  - {s.source} ({'identifiant public' if s.login else 'nom affiché'})"
+            for s in items))
+        status = (
+            "Compte auteur exposé : son identifiant public est ce nom, "
+            "l'identifiant de connexion l'est très probablement aussi."
+            if is_login else
+            "Seul le nom affiché est visible : l'identifiant de connexion peut "
+            "différer, à vérifier dans l'administration (Utilisateurs).")
+        result.add_finding(
+            message=risky_account_message(name),
+            severity="HIGH" if is_login else "MEDIUM",
+            evidence="\n".join(
+                [f"Nom à risque : « {name} » ({reason}).", "Vu sur :"]
+                + sources + [status, RISKY_ACCOUNT_ADVICE]),
+            url=target.rstrip("/") + "/",
+            confidence="confirmed" if is_login else "potential",
+            access_class="pii",
+        )
+
+
+def rest_user_sightings(user: dict, source: str) -> List[UserSighting]:
+    """Noms d'un objet utilisateur de l'API REST : son slug (identifiant
+    public) et, s'il diffère, son nom affiché."""
+    slug, display = user.get("slug"), user.get("name")
+    out = []
+    if normalize_username(slug):
+        out.append(UserSighting(str(slug).strip(), source, True))
+    if (normalize_username(display)
+            and normalize_username(display) != normalize_username(slug)):
+        out.append(UserSighting(str(display).strip(), source, False))
+    return out
+
+
+def _slug_from_url(url: str, target: str) -> Optional[str]:
+    """Dernier segment du chemin d'une URL d'auteur de la cible
+    (/author/<slug>/), None si hors cible ou sans segment."""
+    parts = urlsplit(url or "")
+    if (parts.hostname or "").lower() not in access_tiers.scope_hosts(target):
+        return None
+    segments = [s for s in (parts.path or "").split("/") if s]
+    if not segments or parts.query:
+        return None
+    return segments[-1]
 
 
 class BruteForceLoginCheck(BaseCheck):
@@ -114,6 +210,7 @@ class BruteForceLoginCheck(BaseCheck):
 
     def __init__(self, target: str, config: dict, session):
         super().__init__(target, config, session)
+        self._sightings: List[UserSighting] = []
 
     # ── Public API ─────────────────────────────────────────────────────
 
@@ -122,12 +219,32 @@ class BruteForceLoginCheck(BaseCheck):
         self._check_login_page_detection()          # 1
         self._check_user_enumeration_author()       # 2
         self._check_rest_api_users()                # 3
+        self._check_oembed_author()                 # 7, source oEmbed
+        self._check_sitemap_users()                 # 7, source plan de site
+        self._report_risky_accounts()               # 7, comptes à risque
         self._check_xmlrpc_surface()                # 4, introspection passive
         self._check_rate_limiting()                 # 5, détection de signature passive
         self._check_twofa_detection()                # 6
-        self._check_admin_username()                # 7
         self._check_ssl_enforcement()                # 8
         return self._result
+
+    # ── Noms d'utilisateurs : masquage et relevé ───────────────────────
+
+    def _user(self, name) -> str:
+        """Nom tel qu'il peut figurer dans une preuve (masqué sauf s'il est
+        à risque, voir redact.mask_username)."""
+        return mask_username(name, self.target, usernames_masked(self.config))
+
+    def _saw(self, name, source: str, login: bool) -> None:
+        if normalize_username(name):
+            self._sightings.append(UserSighting(str(name).strip(), source, login))
+
+    def _saw_rest_user(self, user: dict, source: str) -> None:
+        self._sightings += rest_user_sightings(user, source)
+
+    def _report_risky_accounts(self) -> None:
+        """Un constat par nom à risque, toutes sources réunies."""
+        report_risky_accounts(self._result, self.target, self._sightings)
 
     # ── 1) Login page detection ────────────────────────────────────────
 
@@ -207,25 +324,27 @@ class BruteForceLoginCheck(BaseCheck):
                 if "/author/" in location:
                     username = location.rstrip("/").rsplit("/", 1)[-1]
                     found_users.append({"id": author_id, "username": username, "url": location})
+                    self._saw(username, f"redirection de ?author={author_id} vers "
+                              "l'archive de l'auteur", True)
                 # NB : une redirection SANS /author/ (ex. vers l'accueil) est
                 # justement la MITIGATION de l'énumération (archives auteur
                 # désactivées), on ne la compte PAS comme un utilisateur.
 
         if found_users:
             usernames = ", ".join(
-                f"ID {u['id']} → {u['username']}" for u in found_users
+                f"ID {u['id']} → {self._user(u['username'])}" for u in found_users
             )
             evidence_lines = ["User enumeration via ?author=N:"]
             for u in found_users:
-                evidence_lines.append(f"  ?author={u['id']} → {u['username']} ({u['url']})")
+                shown = self._user(u["username"])
+                url = u["url"].rstrip("/")
+                url = url[: len(url) - len(u["username"])] + shown + "/"
+                evidence_lines.append(f"  ?author={u['id']} → {shown} ({url})")
             evidence = "\n".join(evidence_lines)
 
-            # Determine severity based on what was found
-            is_admin = any(
-                u["username"].lower() in ("admin", "administrator")
-                for u in found_users
-            )
-            severity = "CRITICAL" if is_admin else "HIGH"
+            # Un nom à risque (admin, test...) fait l'objet de son propre
+            # constat (_report_risky_accounts) : pas de double sévérité ici.
+            severity = "HIGH"
 
             self._result.add_finding(
                 message=f"User enumeration via ?author=N ({len(found_users)} users found: {usernames})",
@@ -252,9 +371,12 @@ class BruteForceLoginCheck(BaseCheck):
                 if isinstance(data, list) and len(data) > 0:
                     users_info = []
                     for user in data:
+                        if not isinstance(user, dict):
+                            continue
+                        self._saw_rest_user(user, "API REST wp-json/wp/v2/users")
                         uid = user.get("id", "?")
-                        name = user.get("name", "?")
-                        slug = user.get("slug", "?")
+                        name = self._user(user.get("name", "?"))
+                        slug = self._user(user.get("slug", "?"))
                         roles = user.get("roles", [])
                         role_str = ", ".join(roles) if roles else "unknown"
                         users_info.append(
@@ -302,8 +424,10 @@ class BruteForceLoginCheck(BaseCheck):
                 try:
                     data = resp.json()
                     if isinstance(data, dict) and "id" in data:
-                        name = data.get("name", "?")
-                        slug = data.get("slug", "?")
+                        self._saw_rest_user(
+                            data, f"API REST wp-json/wp/v2/users/{uid}")
+                        name = self._user(data.get("name", "?"))
+                        slug = self._user(data.get("slug", "?"))
                         evidence = (
                             f"Individual user endpoint exposed: wp-json/wp/v2/users/{uid}\n"
                             f"User: {name} (slug: {slug})"
@@ -319,6 +443,79 @@ class BruteForceLoginCheck(BaseCheck):
                         )
                 except Exception:
                     pass
+
+    # ── 7) Sources supplémentaires : oEmbed et plan de site des auteurs ──
+
+    def _check_oembed_author(self) -> None:
+        """author_name (et author_url) de l'oEmbed de la page d'accueil.
+
+        La route /oembed/1.0/embed (niveau 1) ne résout qu'une URL du site
+        lui-même, sans rien récupérer à distance : c'est l'URL que WordPress
+        publie dans le lien de découverte <link rel="alternate"
+        type="application/json+oembed"> de ses pages. La route /proxy, qui
+        récupère des URL distantes, n'est jamais appelée.
+        """
+        home = self.target.rstrip("/") + "/"
+        path = f"wp-json/oembed/1.0/embed?url={quote(home, safe='')}"
+        try:
+            data, resp = self.get_json(path)
+        except Exception:
+            return
+        if resp is None or resp.status_code != 200 or not isinstance(data, dict):
+            return
+        source = "oEmbed de la page d'accueil (wp-json/oembed/1.0/embed)"
+        display = data.get("author_name")
+        slug = _slug_from_url(str(data.get("author_url") or ""), self.target)
+        if slug:
+            self._saw(slug, source, True)
+        if normalize_username(display) != normalize_username(slug):
+            self._saw(display, source, False)
+
+    _USERS_SITEMAP = "wp-sitemap-users-1.xml"
+    _USERS_SITEMAP_RE = re.compile(
+        r"<loc>\s*(https?://[^<\s]*?wp-sitemap-users-\d+\.xml)\s*</loc>", re.I)
+    _LOC_RE = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I)
+    _MAX_SITEMAP_USERS = 200
+
+    def _check_sitemap_users(self) -> None:
+        """Auteurs listés par le plan de site natif (WordPress 5.5+).
+
+        wp-sitemap.xml est un point d'entrée public (niveau 1) ; le plan des
+        auteurs n'est lu que s'il y est référencé (niveau 1 par référence).
+        Non référencé, le demander revient à deviner un chemin : niveau 2,
+        seulement sous --authorized.
+        """
+        index = self._safe_get("wp-sitemap.xml")
+        referenced: List[str] = []
+        if index is not None and index.status_code == 200:
+            for url in self._USERS_SITEMAP_RE.findall(index.text or "")[:2]:
+                if (urlsplit(url).hostname or "").lower() in \
+                        access_tiers.scope_hosts(self.target):
+                    referenced.append(url)
+        if not referenced:
+            guessed = self._url(self._USERS_SITEMAP)
+            if not self.may_request(guessed):
+                self.note_unlinked_skipped(
+                    f"plan de site des auteurs {self._USERS_SITEMAP}, non "
+                    "référencé par wp-sitemap.xml")
+                return
+            referenced = [guessed]
+        for url in referenced:
+            if not self.may_request(url):
+                continue
+            try:
+                resp = self.http_get_url(url)
+            except Exception:
+                continue
+            body = resp.text or ""
+            if (resp.status_code != 200 or "<urlset" not in body.lower()
+                    or self._is_soft404(resp)):
+                continue
+            name = url.rsplit("/", 1)[-1]
+            for loc in self._LOC_RE.findall(body)[: self._MAX_SITEMAP_USERS]:
+                slug = _slug_from_url(loc, self.target)
+                if slug:
+                    self._saw(slug, f"plan de site des auteurs {name}", True)
 
     # ── 4) XML-RPC surface (GET seul, aucun appel XML-RPC) ────────────────
 
@@ -522,33 +719,6 @@ class BruteForceLoginCheck(BaseCheck):
                 evidence=evidence,
                 confidence="potential",
             )
-
-    # ── 7) Admin username presence ────────────────────────────────────
-
-    def _check_admin_username(self) -> None:
-        """Check if 'admin' user exists via ?author=1 redirect."""
-        resp = self._safe_get("?author=1", allow_redirects=False)
-        if resp is None:
-            return
-
-        if resp.status_code in (301, 302, 307, 308):
-            location = resp.headers.get("Location", "")
-            if "/author/" in location:
-                username = location.rstrip("/").rsplit("/", 1)[-1]
-                if username.lower() in ("admin", "administrator"):
-                    evidence = (
-                        f"'admin' username confirmed via ?author=1\n"
-                        f"HTTP {resp.status_code} → {location}"
-                    )
-                    self._result.add_finding(
-                        message="'admin' username exists, primary brute-force target",
-                        severity="CRITICAL",
-                        evidence=evidence,
-                        url=f"{self.target.rstrip('/')}/?author=1",
-                    )
-                # Else: user found but not 'admin', enumeration is already
-                # reported by _check_user_enumeration_author (check #2), no
-                # separate finding needed here.
 
     # ── 8) SSL enforcement ────────────────────────────────────────────
 

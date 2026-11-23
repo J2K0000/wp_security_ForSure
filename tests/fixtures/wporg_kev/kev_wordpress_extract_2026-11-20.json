@@ -1,0 +1,87 @@
+{
+ "catalogVersion": "2026.11.20",
+ "dateReleased": "2026-11-20T17:48:39.1516Z",
+ "source": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+ "wordpress_entries_2025_2026": [
+  {
+   "cveID": "CVE-2026-119977",
+   "vendorProject": "WordPress",
+   "product": "WordPress Core",
+   "vulnerabilityName": "WordPress WordPress Core Time-of-check Time-of-use (TOCTOU) Race Condition Vulnerability",
+   "dateAdded": "2026-11-03",
+   "shortDescription": "WordPress WordPress Core contains a time-of-check time-of-use (TOCTOU) race condition vulnerability that could allow unauthenticated attackers to execute code on the server during the upgrade window. This is due to predictable, web-accessible staging paths used during full-package core upgrades.",
+   "requiredAction": "Apply mitigations in accordance with vendor instructions, ensuring compliance with CISA’s BOD 26-04 Prioritizing Security Updates Based on Risk (see URL in Notes) guidance and CISA’s “Forensics Triage Requirements” (see URL in Notes). Follow applicable BOD 26-04 guidance for cloud services or discontinue use of the product if mitigations are unavailable. Stakeholders are responsible for evaluating each asset's internet exposure and ensuring adherence to BOD 26-04 patching guidelines.",
+   "dueDate": "2026-11-06",
+   "knownRansomwareCampaignUse": "Unknown",
+   "forensicTriage": "Yes",
+   "notes": "https://wordpress.org/news/2026/10/wordpress-7-1-4 ; https://www.wordfence.com/threat-intel/vulnerabilities/wordpress-core/wordpress-core-470-713-unauthenticated-upgrade-window-staged-installer-remote-code-execution ; BOD 26-04: https://www.cisa.gov/news-events/directives/bod-26-04-prioritizing-security-updates-based-risk ; Forensics Triage Requirements: https://www.cisa.gov/news-events/directives/bod-26-04-implementation-guidance-prioritizing-security-updates-based-risk ; https://nvd.nist.gov/vuln/detail/CVE-2026-119977",
+   "cwes": [
+    "CWE-367"
+   ]
+  },
+  {
+   "cveID": "CVE-2026-87902",
+   "vendorProject": "WordPress",
+   "product": "Core",
+   "vulnerabilityName": "WordPress Core Remote File Inclusion Vulnerability",
+   "dateAdded": "2026-09-25",
+   "shortDescription": "WordPress Core contains a remote file inclusion vulnerability which could allow an unauthenticated attacker to make page-template resolution include a chosen readable local `.php` file outside the active theme directories, leading to remote code execution.",
+   "requiredAction": "Apply mitigations in accordance with vendor instructions, ensuring compliance with CISA’s BOD 26-04 Prioritizing Security Updates Based on Risk (see URL in Notes) guidance and CISA’s “Forensics Triage Requirements” (see URL in Notes). Follow applicable BOD 26-04 guidance for cloud services or discontinue use of the product if mitigations are unavailable. Stakeholders are responsible for evaluating each asset's internet exposure and ensuring adherence to BOD 26-04 patching guidelines.",
+   "dueDate": "2026-09-28",
+   "knownRansomwareCampaignUse": "Unknown",
+   "forensicTriage": "Yes",
+   "notes": "https://github.com/WordPress/wordpress-develop/security/advisories/GHSA-7hp8-65ch-5whp ; ; BOD 26-04: https://www.cisa.gov/news-events/directives/bod-26-04-prioritizing-security-updates-based-risk ; Forensics Triage Requirements: https://www.cisa.gov/news-events/directives/bod-26-04-implementation-guidance-prioritizing-security-updates-based-risk ; https://nvd.nist.gov/vuln/detail/CVE-2026-87902",
+   "cwes": [
+    "CWE-98"
+   ]
+  },
+  {
+   "cveID": "CVE-2026-60137",
+   "vendorProject": "WordPress",
+   "product": "Core",
+   "vulnerabilityName": "WordPress Core SQL Injection Vulnerability",
+   "dateAdded": "2026-07-21",
+   "shortDescription": "WordPress Core contains a SQL injection vulnerability when a plugin or theme passes untrusted input to the parameter. This vulnerability can be chained with CVE-2026-63030 to allow an unauthenticated attacker to gain remote code execution on default WordPress installations.",
+   "requiredAction": "Apply mitigations in accordance with vendor instructions, ensuring compliance with CISA’s BOD 26-04 Prioritizing Security Updates Based on Risk (see URL in Notes) guidance and CISA’s “Forensics Triage Requirements” (see URL in Notes). Follow applicable BOD 26-04 guidance for cloud services or discontinue use of the product if mitigations are unavailable. Stakeholders are responsible for evaluating each asset's internet exposure and ensuring adherence to BOD 26-04 patching guidelines.",
+   "dueDate": "2026-08-04",
+   "knownRansomwareCampaignUse": "Unknown",
+   "forensicTriage": "No",
+   "notes": "https://wordpress.org/news/2026/07/wordpress-7-0-2-release/ ; BOD 26-04: https://www.cisa.gov/news-events/directives/bod-26-04-prioritizing-security-updates-based-risk ; Forensics Triage Requirements: https://www.cisa.gov/news-events/directives/bod-26-04-implementation-guidance-prioritizing-security-updates-based-risk ; https://nvd.nist.gov/vuln/detail/CVE-2026-60137",
+   "cwes": [
+    "CWE-89"
+   ]
+  },
+  {
+   "cveID": "CVE-2026-63030",
+   "vendorProject": "WordPress",
+   "product": "Core",
+   "vulnerabilityName": "WordPress Core Interpretation Conflict Vulnerability",
+   "dateAdded": "2026-07-21",
+   "shortDescription": "WordPress Core contains an interpretation conflict vulnerability that could allow an attacker to perform SQL Injection and achieve Remote Code Execution. This vulnerability can be chained with CVE-2026-60137.",
+   "requiredAction": "Apply mitigations in accordance with vendor instructions, ensuring compliance with CISA’s BOD 26-04 Prioritizing Security Updates Based on Risk (see URL in Notes) guidance and CISA’s “Forensics Triage Requirements” (see URL in Notes). Follow applicable BOD 26-04 guidance for cloud services or discontinue use of the product if mitigations are unavailable. Stakeholders are responsible for evaluating each asset's internet exposure and ensuring adherence to BOD 26-04 patching guidelines.",
+   "dueDate": "2026-07-24",
+   "knownRansomwareCampaignUse": "Unknown",
+   "forensicTriage": "Yes",
+   "notes": "https://wordpress.org/news/2026/07/wordpress-7-0-2-release/ ; BOD 26-04: https://www.cisa.gov/news-events/directives/bod-26-04-prioritizing-security-updates-based-risk ; Forensics Triage Requirements: https://www.cisa.gov/news-events/directives/bod-26-04-implementation-guidance-prioritizing-security-updates-based-risk ; https://nvd.nist.gov/vuln/detail/CVE-2026-63030",
+   "cwes": [
+    "CWE-436"
+   ]
+  },
+  {
+   "cveID": "CVE-2026-41940",
+   "vendorProject": "WebPros",
+   "product": "cPanel & WHM and WP2 (WordPress Squared)",
+   "vulnerabilityName": "WebPros cPanel & WHM and WP2 (WordPress Squared) Missing Authentication for Critical Function Vulnerability",
+   "dateAdded": "2026-04-30",
+   "shortDescription": "WebPros cPanel & WHM (WebHost Manager) and WP2 (WordPress Squared) contain an authentication bypass vulnerability in the login flow that allows unauthenticated remote attackers to gain unauthorized access to the control panel.",
+   "requiredAction": "Apply mitigations per vendor instructions, follow applicable BOD 22-01 guidance for cloud services, or discontinue use of the product if mitigations are unavailable.",
+   "dueDate": "2026-05-03",
+   "knownRansomwareCampaignUse": "Known",
+   "forensicTriage": "No",
+   "notes": "https://support.cpanel.net/hc/en-us/articles/40073787579671-cPanel-WHM-Security-Update-04-28-2026 ; https://docs.cpanel.net/release-notes/release-notes/ ; https://docs.wpsquared.com/changelogs/versions/changelog/#13617 ; https://nvd.nist.gov/vuln/detail/CVE-2026-41940\"",
+   "cwes": [
+    "CWE-306"
+   ]
+  }
+ ]
+}

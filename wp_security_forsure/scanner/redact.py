@@ -11,10 +11,19 @@ confirmer hors ligne un mot de passe faible deviné.
 S'applique à la source (checks d'exposition) et, en défense en profondeur,
 dans les trois reporters juste avant le rendu. Le masquage est idempotent :
 une valeur déjà masquée n'est pas masquée une seconde fois.
+
+Noms d'utilisateurs (RGPD) : un identifiant ou un nom affiché relevé par
+énumération est une donnée personnelle. Dans les preuves, il est réduit à ses
+2 premiers caractères suivis de ``***`` (``mask_username``), sauf s'il figure
+dans la liste des noms à risque (``risky_usernames``) : ce nom est alors le
+constat lui-même et reste lisible. Désactivable par la clé de configuration
+``mask_usernames`` (défaut : vrai).
 """
 
+import ipaddress
 import re
-from typing import Any
+from typing import Any, FrozenSet, Optional
+from urllib.parse import urlsplit
 
 _KEEP = 4
 _MASK_MARK = "***("
@@ -182,3 +191,92 @@ def redact_obj(obj: Any) -> Any:
     if isinstance(obj, tuple):
         return tuple(redact_obj(v) for v in obj)
     return obj
+
+
+# ── Noms d'utilisateurs : liste des noms à risque et masquage RGPD ───────
+
+# Noms de comptes génériques, les premiers essayés par toute attaque par force
+# brute. Liste unique, partagée par toutes les sources d'énumération.
+GENERIC_USERNAMES = ("admin", "administrator", "test", "tester", "demo",
+                     "root", "wordpress", "wp", "user", "guest")
+
+_USERNAME_KEEP = 2
+_USERNAME_MASK = "***"
+_SEPARATORS = ("", "-", "_", ".")
+
+
+def _domain_label(target: str) -> str:
+    """Premier libellé du nom d'hôte de la cible, « www. » retiré ; vide pour
+    une adresse IP."""
+    host = (urlsplit(target or "").hostname or "").lower().rstrip(".")
+    if not host:
+        return ""
+    try:
+        ipaddress.ip_address(host)
+        return ""
+    except ValueError:
+        pass
+    if host.startswith("www."):
+        host = host[4:]
+    return host.split(".", 1)[0]
+
+
+def domain_username_variants(target: str) -> FrozenSet[str]:
+    """Noms dérivés du domaine de la cible : son premier libellé, avec ou sans
+    tirets (supprimés, soulignés, points), seul ou accolé à « admin »."""
+    label = _domain_label(target)
+    if not label:
+        return frozenset()
+    bases = {label, label.replace("-", ""), label.replace("-", "_"),
+             label.replace("-", ".")}
+    names = set(bases)
+    for base in bases:
+        for sep in _SEPARATORS:
+            names.add(f"admin{sep}{base}")
+            names.add(f"{base}{sep}admin")
+    return frozenset(n for n in names if n)
+
+
+def risky_usernames(target: str = "") -> FrozenSet[str]:
+    """Noms d'utilisateurs à risque pour cette cible : génériques et dérivés
+    de son domaine (minuscules)."""
+    return frozenset(GENERIC_USERNAMES) | domain_username_variants(target)
+
+
+def normalize_username(name: Any) -> str:
+    return str(name or "").strip().lower()
+
+
+def is_risky_username(name: Any, target: str = "") -> bool:
+    """True si `name` (casse et espaces ignorés) est un nom à risque."""
+    value = normalize_username(name)
+    return bool(value) and value in risky_usernames(target)
+
+
+def mask_username(name: Any, target: str = "", enabled: bool = True) -> str:
+    """Masque un nom d'utilisateur non générique : ``ju***``.
+
+    2 caractères conservés au plus, jamais le nom entier (``jo`` donne
+    ``j***``). Un nom à risque reste lisible : il est le constat. Idempotent.
+    """
+    value = "" if name is None else str(name)
+    if (not enabled or not value.strip() or value.endswith(_USERNAME_MASK)
+            or is_risky_username(value, target)):
+        return value
+    keep = max(0, min(_USERNAME_KEEP, len(value) - 1))
+    return value[:keep] + _USERNAME_MASK
+
+
+def mask_email(email: Any, target: str = "", enabled: bool = True) -> str:
+    """Masque la partie locale d'une adresse : ``ju***@exemple.test``."""
+    value = "" if email is None else str(email)
+    if not enabled or "@" not in value:
+        return mask_username(value, target, enabled)
+    local, _, domain = value.partition("@")
+    return f"{mask_username(local, target, enabled)}@{domain}"
+
+
+def usernames_masked(config: Optional[dict]) -> bool:
+    """Clé de configuration `mask_usernames` (défaut : vrai)."""
+    value = (config or {}).get("mask_usernames", True)
+    return True if value is None else bool(value)

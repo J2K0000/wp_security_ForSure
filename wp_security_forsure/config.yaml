@@ -18,6 +18,9 @@ output_dir: "./reports"
 # wp-cron.php et les fichiers PHP devinés sous wp-content/ ne sont jamais
 # demandés, quel que soit le niveau.
 authorized: false
+# Masque les noms d'utilisateurs non génériques dans les rapports (RGPD) :
+# « ju*** ». Les noms à risque (admin, test...) restent lisibles.
+mask_usernames: true
 
 # Robustesse (Chantier 3)
 max_response_bytes: 5242880 # Borne de lecture des corps HTTP (5 Mio). 0 = illimité
@@ -34,7 +37,9 @@ takeover_enum: false
 checks:
   # Prio 1, Intrusion & Prise de Contrôle
   - fingerprint
-  - vulnerability_scan
+  - vulnerability_scan  # CVE + exploitation active (instantané CISA KEV, refresh-kev)
+  - core_branch  # version du cœur : insecure / branche à jour (api.wordpress.org, cache 24 h)
+  - plugin_status  # extensions fermées, abandonnées, outillage de maintenance (api.wordpress.org, cache 7 j)
   - rest_batch  # wp2shell / CVE-2026-63030 : RCE pré-auth, exposition (passif)
   - ssrf_endpoints  # SSRF non-auth via endpoints REST custom + cœur DNS-rebinding
   - auth_bypass_state  # auth-bypass/priv-esc conditionnels (état runtime / secret faible)

@@ -10,7 +10,8 @@ Couvre :
   3) Gravity Forms detection
   4) Elementor form detection
   5) WPForms detection
-  6) Comment form nonce test
+  6) Comment form nonce test (accueil, sinon un article réel : voir
+     wp_features.find_article ; le formulaire n'est jamais soumis)
   7) Login form autocomplete analysis
   8) Registration form detection (passif : lecture du formulaire, jamais de
      création de compte)
@@ -30,6 +31,7 @@ from typing import List, Optional
 from urllib.parse import urlparse, urljoin
 
 from .base import BaseCheck, CheckResult
+from .wp_features import find_article
 
 class FormsUploadCheck(BaseCheck):
     """Vérifie la sécurité des formulaires et des endpoints d'upload."""
@@ -234,12 +236,36 @@ class FormsUploadCheck(BaseCheck):
                 })
         return findings
 
+    @staticmethod
+    def _has_comment_form(page: str) -> bool:
+        return ("wp-comments-post.php" in page
+                or "commentform" in page.lower()
+                or "id=\"respond\"" in page)
+
+    def _comment_page(self) -> tuple:
+        """(URL, HTML) de la page où chercher le formulaire de commentaire :
+        l'accueil, ou à défaut un article réel (wp_features.find_article :
+        API REST ou lien de l'accueil). Lecture seule, rien n'est soumis."""
+        url = f"{self.target}/"
+        resp = self.http_get("")
+        page = resp.text if resp.text else ""
+        if self._has_comment_form(page):
+            return url, page
+        article = find_article(self)
+        if article:
+            try:
+                art = self.http_get_url(article[0])
+                if art.status_code == 200 and self._has_comment_form(art.text or ""):
+                    return article[0], art.text or ""
+            except Exception:
+                pass
+        return url, page
+
     def _check_comment_nonce(self) -> List[dict]:
         """Vérifie si le formulaire de commentaire possède un nonce."""
         findings = []
         try:
-            resp = self.http_get("")
-            page = resp.text if resp.text else ""
+            page_url, page = self._comment_page()
 
             # Chercher des indicateurs de nonce dans le formulaire de commentaire
             nonce_indicators = [
@@ -256,12 +282,7 @@ class FormsUploadCheck(BaseCheck):
                     break
 
             # Vérifier aussi wp-comments-post.php
-            has_comment_form = (
-                "wp-comments-post.php" in page
-                or "commentform" in page.lower()
-                or "id=\"commentform\"" in page
-                or "id=\"respond\"" in page
-            )
+            has_comment_form = self._has_comment_form(page)
 
             if has_comment_form and not found_nonce:
                 findings.append({
@@ -275,7 +296,7 @@ class FormsUploadCheck(BaseCheck):
                         "un visiteur anonyme (par design ; l'anti-spam repose sur "
                         "Akismet/modération). Pas une vulnérabilité propre au site."
                     ),
-                    "url": f"{self.target}/",
+                    "url": page_url,
                     "confidence": "potential",
                 })
             elif has_comment_form:
@@ -283,7 +304,7 @@ class FormsUploadCheck(BaseCheck):
                     "message": "Formulaire de commentaire protégé par nonce",
                     "severity": "INFO",
                     "evidence": "Nonce présent dans le formulaire de commentaire.",
-                    "url": f"{self.target}/",
+                    "url": page_url,
                 })
         except Exception:
             pass

@@ -4,6 +4,9 @@ from wp_security_forsure.scanner.reporters.impact import _CLASS_BY_CHECK, _CLASS
 from wp_security_forsure.scanner.reporters import impact
 
 
+# Checks récents dont la classe par défaut reste à ajouter à
+
+
 def test_every_registered_check_has_a_default_class():
     missing = sorted(set(CHECK_REGISTRY) - set(_CLASS_BY_CHECK))
     assert not missing, f"Checks sans classe par défaut : {missing}"
