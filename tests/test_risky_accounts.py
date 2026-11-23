@@ -360,4 +360,4 @@ def test_new_texts_have_no_em_dash():
     from wp_security_forsure.scanner.checks import brute_force_login, rest_api
     from wp_security_forsure.scanner import redact
     for mod in (brute_force_login, rest_api, redact):
-        assert "—" not in inspect.getsource(mod), mod.__name__
+        assert "\u2014" not in inspect.getsource(mod), mod.__name__

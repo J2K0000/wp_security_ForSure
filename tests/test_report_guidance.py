@@ -120,11 +120,11 @@ def test_audit_limits_items():
 
 def test_guidance_texts_have_no_em_dash():
     import inspect
-    assert "—" not in inspect.getsource(guidance)
+    assert "\u2014" not in inspect.getsource(guidance)
     from wp_security_forsure.scanner.reporters import (
         html_reporter, json_reporter, terminal_reporter)
     for mod in (html_reporter, json_reporter, terminal_reporter):
-        assert "—" not in inspect.getsource(mod), mod.__name__
+        assert "\u2014" not in inspect.getsource(mod), mod.__name__
 
 
 # ── JSON ─────────────────────────────────────────────────────────────────

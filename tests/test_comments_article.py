@@ -134,4 +134,4 @@ def test_comment_texts_have_no_em_dash():
     import inspect
     from wp_security_forsure.scanner.checks import forms_upload, wp_features
     for mod in (wp_features, forms_upload):
-        assert "—" not in inspect.getsource(mod), mod.__name__
+        assert "\u2014" not in inspect.getsource(mod), mod.__name__
