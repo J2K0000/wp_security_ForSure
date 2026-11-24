@@ -57,6 +57,14 @@ class BrowserRenderCheck(BaseCheck):
         return ordered[:max(1, limit)]
 
     def run(self) -> CheckResult:
+        if not self.config.get(self.opt_in):
+            # Garde-fou en plus du moteur (qui ne lance pas ce check sans
+            # --render) : un appel direct ne démarre jamais Chromium.
+            self._result.add_finding(
+                message=SKIP_REASON, severity="INFO",
+                evidence="Chromium n'a pas été lancé.", url=self.target,
+                confidence="confirmed")
+            return self._result
         observations = []
         with Renderer(self.target, self.config,
                       references=self.references()) as renderer:

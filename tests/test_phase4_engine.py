@@ -109,3 +109,17 @@ def test_new_checks_are_listed_first_in_the_configuration():
                           / "wp_security_forsure" / "config.yaml").read_text(encoding="utf-8"))
     assert cfg["checks"][:3] == ["visit_profiles", "client_injection", "browser_render"]
     assert cfg["render"] is False and cfg["visit_profiles"] is True
+
+
+def test_direct_call_without_render_never_starts_chromium(monkeypatch):
+    """Un appel direct de run() (test de fumée, intégration) sans l'option
+    render ne lance pas Chromium et ne fait aucune requête."""
+    from tests.conftest import make_check
+
+    def boom(self):
+        raise AssertionError("Chromium lancé sans --render")
+    monkeypatch.setattr(browser_render.Renderer, "__enter__", boom)
+    chk = make_check(browser_render.BrowserRenderCheck)
+    result = chk.run()
+    assert [f["severity"] for f in result.findings] == ["INFO"]
+    assert result.findings[0]["message"] == browser_render.SKIP_REASON
