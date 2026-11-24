@@ -112,6 +112,8 @@ def test_lure_is_caught_and_nothing_leaves_localhost(site, renderer):
 
     # Rien n'est parti ailleurs que vers le site local, et aucun POST.
     assert obs.contacted_hosts == {"127.0.0.1"}
+    # Les évaluations de la passe elle-même ne remontent pas comme code de la page.
+    assert [e for e in obs.events if e[0] in ("eval", "function")] == []
     assert ("POST", "/") not in _Handler.seen
     blocked_hosts = {b.host for b in obs.blocked}
     assert "bsc-testnet-rpc.publicnode.com" in blocked_hosts

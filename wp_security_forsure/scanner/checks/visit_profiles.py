@@ -329,7 +329,13 @@ class VisitProfilesCheck(BaseCheck):
             if client is None:
                 client = self.profile_client()
                 sessions[key] = client
-            variants[profile.id] = self._fetch(url, profile, client)
+            variant = self._fetch(url, profile, client)
+            variants[profile.id] = variant
+            if profile is PROFILES[0] and variant.status is None:
+                # Pas de réponse au premier profil (cible injoignable) : on
+                # n'attend pas sept délais de plus, la sonde de joignabilité
+                # du moteur rendra le verdict.
+                break
         return variants
 
     def _fetch(self, url: str, profile: Profile, client: requests.Session) -> Variant:

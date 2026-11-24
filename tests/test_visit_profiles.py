@@ -170,3 +170,15 @@ def test_compare_ignores_failed_profiles():
     failed = Variant("victim_google", error="ConnectionError")
     gates, volatile = compare({"direct_a": ok, "victim_google": failed})
     assert gates == {} and volatile == set()
+
+
+def test_unreachable_target_stops_after_the_first_profile():
+    import requests as rq
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
+        rsps.add(responses.GET, PAGE, body=rq.exceptions.ConnectionError("refusé"))
+        chk = make_check(VisitProfilesCheck, config={"authorized": False})
+        chk.context = {}
+        result = chk.run()
+        assert len(rsps.calls) == 1
+    assert real(result.findings) == []
+    assert "ne répond pas" in result.findings[0]["message"]

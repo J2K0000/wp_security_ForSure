@@ -236,7 +236,11 @@ OVERLAY_SCRIPT = r"""
 
 FRAME_TEXT_SCRIPT = ("() => document.documentElement ? "
                      "document.documentElement.innerText.slice(0, 20000) : ''")
-_OWN_SCRIPTS = frozenset({OVERLAY_SCRIPT.strip(), FRAME_TEXT_SCRIPT.strip()})
+CLICK_LABEL_SCRIPT = ("e => ((e.closest('label') || e.parentElement || e).innerText"
+                      " || '').slice(0, 200) + ' ' + (e.getAttribute('aria-label') || '')")
+# Évaluations de la passe elle-même : jamais comptées comme code de la page.
+_OWN_SCRIPTS = frozenset({OVERLAY_SCRIPT.strip(), FRAME_TEXT_SCRIPT.strip(),
+                          CLICK_LABEL_SCRIPT.strip()})
 
 # Élément à cliquer dans un faux CAPTCHA : case à cocher ou bouton dont le
 # texte évoque une vérification.
@@ -649,9 +653,7 @@ class Renderer:
                     continue
                 for handle in handles:
                     try:
-                        text = handle.evaluate(
-                            "e => ((e.closest('label') || e.parentElement || e).innerText"
-                            " || '').slice(0, 200) + ' ' + (e.getAttribute('aria-label') || '')")
+                        text = handle.evaluate(CLICK_LABEL_SCRIPT)
                         if selector not in ("input[type=checkbox]", "[role=checkbox]") \
                                 and not _CLICK_TEXT_RE.search(text):
                             continue
