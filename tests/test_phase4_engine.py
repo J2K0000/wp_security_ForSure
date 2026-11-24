@@ -123,3 +123,12 @@ def test_direct_call_without_render_never_starts_chromium(monkeypatch):
     result = chk.run()
     assert [f["severity"] for f in result.findings] == ["INFO"]
     assert result.findings[0]["message"] == browser_render.SKIP_REASON
+
+
+def test_audit_limits_name_what_profiles_cannot_trigger():
+    from wp_security_forsure.scanner.reporters.guidance import audit_limits_block
+    text = " ".join(audit_limits_block()["items"])
+    assert "adresse IP de Googlebot" in text
+    assert "ciblage par pays" in text
+    assert "--render" in text
+

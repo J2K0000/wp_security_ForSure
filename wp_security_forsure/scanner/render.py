@@ -246,7 +246,7 @@ _OWN_SCRIPTS = frozenset({OVERLAY_SCRIPT.strip(), FRAME_TEXT_SCRIPT.strip(),
 # texte évoque une vérification.
 CLICK_SELECTORS = ("input[type=checkbox]", "[role=checkbox]", "button", "label",
                    "[onclick]", "div[class*=check]", "span[class*=check]")
-_CLICK_TEXT_RE = re.compile(r"robot|human|humain|verif|vérif|captcha|continuer|continue", re.I)
+_CLICK_TEXT_RE = re.compile(r"robot|human|humain|verif|vérif|captcha", re.I)
 
 
 @dataclass
@@ -641,9 +641,13 @@ class Renderer:
     def _click_target(self, page, obs: RenderObservation) -> str:
         """Clique, une fois, l'élément de vérification d'un faux CAPTCHA, pour
         provoquer la copie dans le presse-papiers. Seulement si la page montre
-        un leurre (raccourci clavier ou terme de faux CAPTCHA)."""
+        un leurre net : des instructions au clavier, ou un terme de faux CAPTCHA
+        avec une superposition qui couvre au moins 80 % de la fenêtre (un
+        widget reCAPTCHA de formulaire n'en est pas une). L'élément cliqué doit
+        lui-même évoquer une vérification (robot, humain, vérifier, captcha)."""
         keys, lure, _ = _lure_text(obs)
-        if not (keys or lure):
+        big = any(o.get("cover", 0) >= OVERLAY_COVER for o in obs.overlays)
+        if not (keys or (lure and big)):
             return ""
         for frame in page.frames[:20]:
             for selector in CLICK_SELECTORS:
@@ -654,8 +658,7 @@ class Renderer:
                 for handle in handles:
                     try:
                         text = handle.evaluate(CLICK_LABEL_SCRIPT)
-                        if selector not in ("input[type=checkbox]", "[role=checkbox]") \
-                                and not _CLICK_TEXT_RE.search(text):
+                        if not _CLICK_TEXT_RE.search(text or ""):
                             continue
                         if not handle.is_visible():
                             continue

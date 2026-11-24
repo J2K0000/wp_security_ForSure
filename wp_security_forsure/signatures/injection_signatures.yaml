@@ -5,8 +5,10 @@
 # signatures ne servent qu'à lire : le scanner ne télécharge ni n'exécute ce
 # qu'elles désignent.
 #
-# Contribuer : ajouter une entrée avec sa source publique (rapport d'éditeur,
-# CERT). Une signature sans source n'est pas acceptée.
+# Chaque entrée porte sa source (champ source), ou la section qui la contient
+# la cite en commentaire. Contribuer : ajouter une entrée avec sa source
+# publique (rapport d'éditeur, CERT). Une signature sans source n'est pas
+# acceptée.
 version: 1
 
 clickfix:
@@ -91,22 +93,28 @@ etherhiding:
       family: "ClearFake 2026, traceur (BSC testnet)"
       source: https://www.trendmicro.com/pt_br/research/26/e/smart-contracts-for-command-and-control.html
   # Sélecteurs de fonctions du contrat logique UNC5142.
+  # Source : https://cloud.google.com/blog/topics/threat-intelligence/unc5142-etherhiding-distribute-malware
   selectors:
     - '0x9f7a7126'
     - '0x1ba79aa2'
     - '0xa76e7648'
     - '0xa98b06d3'
+  # Appel JSON-RPC eth_call (lecture d'un contrat sans transaction).
+  # Sources : https://cloud.google.com/blog/topics/threat-intelligence/unc5142-etherhiding-distribute-malware
+  #           https://www.trendmicro.com/pt_br/research/26/e/smart-contracts-for-command-and-control.html
   rpc_call:
     jsonrpc: '[''"]?jsonrpc[''"]?\s*:\s*[''"]2\.0[''"]'
     method: '\beth_call\b'
     client: 'new\s+web3\s*\(|web3\.eth\.contract|new\s+ethers\.(?:providers\.)?jsonrpcprovider'
     address: '\b0x[a-f0-9]{40}\b'
   # Chaîne de décodage du premier étage UNC5142 : atob puis pako.ungzip puis eval.
+  # Source : https://cloud.google.com/blog/topics/threat-intelligence/unc5142-etherhiding-distribute-malware
   loader_chain:
     decode: '\batob\s*\('
     inflate: '\b(?:ungzip|inflate)\s*\('
     run: '\beval\s*\(|\bnew\s+function\s*\(|\bfunction\s*\(\s*[''"`]'
   # Bibliothèques chargées par le premier étage UNC5142 depuis un CDN.
+  # Source : https://cloud.google.com/blog/topics/threat-intelligence/unc5142-etherhiding-distribute-malware
   libraries:
     - id: web3
       pattern: '(?:^|/)web3(?:@[^/]*)?/(?:dist/)?web3(?:\.min)?\.js|(?:^|/)web3(?:\.min)?\.js$'

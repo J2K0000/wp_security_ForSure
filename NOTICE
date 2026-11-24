@@ -12,5 +12,5 @@ datasets is bundled in this distribution.
 
 wp_security_forsure/signatures/injection_signatures.yaml lists indicators
 (contract addresses, hostnames, strings) published by Microsoft Threat
-Intelligence, Google Threat Intelligence, Trend Micro and Rapid7. Each entry
-links to its source.
+Intelligence, Google Threat Intelligence, Trend Micro and Rapid7. Each entry,
+or the section that holds it, cites its source.

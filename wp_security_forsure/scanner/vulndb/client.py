@@ -10,7 +10,12 @@ class WpvulnClient:
     def __init__(self, timeout: int = 15, session: Optional[requests.Session] = None):
         self.timeout = timeout
         self.session = session or requests.Session()
-        self.session.headers.setdefault("User-Agent", UA)
+        # Une Session neuve porte déjà « python-requests/x » : setdefault ne
+        # poserait jamais l'agent de l'outil. On remplace l'agent par défaut,
+        # sans écraser un agent choisi par l'appelant.
+        current = self.session.headers.get("User-Agent", "")
+        if not current or current.startswith("python-requests/"):
+            self.session.headers["User-Agent"] = UA
 
     def _get(self, path: str) -> Optional[dict]:
         try:

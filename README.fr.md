@@ -24,7 +24,7 @@ Cet outil prend le parti inverse et l'impose dans le code, pas dans la documenta
 | Accès gradué | Par défaut, l'outil ne demande que la page d'accueil, ce qu'elle référence et les points d'entrée publics standard de WordPress (index de l'API REST, flux, `xmlrpc.php` en `GET`, `wp-login.php`, sitemaps). Deviner des chemins non liés (sauvegardes, `.env`, `.git/`, slugs de plugins) demande `--authorized`, à n'utiliser qu'avec l'autorisation écrite du propriétaire. Sans elle, ces parties sont rapportées « non réalisées ». |
 | La cible ne peut pas retourner le scanner contre vous | Chaque requête sortante est résolue puis refusée si elle vise une adresse privée, de bouclage, de lien local ou réservée. Les redirections sont suivies à la main, 5 sauts au plus, seulement vers l'hôte de la cible et sa variante `www.`. Chaque audit a un budget de requêtes. |
 | Les secrets ne sortent pas dans les rapports | Un mot de passe, une clé ou un sel trouvé dans un fichier exposé est masqué à la source, puis à nouveau avant l'écriture de tout rapport. |
-| Trafic identifiable | Les requêtes portent un User-Agent qui nomme l'outil et renvoie à ce dépôt. Deux exceptions documentées, parce que les injections se cachent des outils : les profils de visite se présentent comme un navigateur (et le contrôle du cloaking comme Googlebot), sur l'accueil et au plus deux pages qu'il lie. |
+| Trafic identifiable | Les requêtes portent un User-Agent qui nomme l'outil et renvoie à ce dépôt. Deux exceptions documentées, parce que les injections se cachent des outils : les profils de visite se présentent comme un navigateur ou comme Googlebot, et le contrôle du cloaking comme Googlebot, sur l'accueil et au plus deux pages qu'il lie. |
 | La passe navigateur suit les mêmes règles | `--render` est désactivé par défaut. Dans Chromium, seules `GET`, `HEAD` et `OPTIONS` partent ; les autres méthodes, les nœuds RPC de blockchain, la navigation vers un autre site, les WebSocket, les téléchargements et les adresses privées sont bloqués et notés. Le presse-papiers est intercepté, jamais écrit. Le bac à sable de Chromium est obligatoire : sans lui, la passe ne démarre pas. |
 | Les erreurs ne sont pas cachées | Un contrôle qui échoue est rapporté « non réalisé », le verdict dit que l'audit est incomplet, et le code de sortie vaut `3`. |
 
@@ -88,8 +88,9 @@ regroupés selon ce qu'un attaquant y gagne :
   quelques scripts tiers inconnus) sont comparés aux signatures publiées de ClickFix et d'EtherHiding,
   listées avec leurs sources dans `wp_security_forsure/signatures/injection_signatures.yaml`. Avec `--render`,
   les pages s'exécutent dans Chromium : écritures dans le presse-papiers, appels de blockchain,
-  redirections JavaScript et superpositions de faux CAPTCHA sont notés, et la case d'un faux CAPTCHA
-  est cliquée une fois pour révéler la commande qu'il copie.
+  redirections JavaScript et superpositions de faux CAPTCHA sont notés. Sous un faux CAPTCHA plein écran
+  ou des instructions au clavier, un élément dont le libellé évoque une vérification est cliqué une fois,
+  pour révéler la commande que la page copie.
 - Prise de contrôle et intrusion : empreinte des composants et versions, CVE connues (relevées en critique
   quand elles figurent au catalogue CISA des vulnérabilités activement exploitées), version du cœur marquée
   insecure par wordpress.org ou en retard sur sa branche, plugins fermés sur wordpress.org ou sans mise à
@@ -164,7 +165,7 @@ supprimez-les à la fin de la mission.
 - Exploitation active : [catalogue KEV de la CISA](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), téléchargé à la demande.
 - Statut du cœur et des plugins : l'[API publique de WordPress.org](https://api.wordpress.org/).
 - Signatures d'injection : indicateurs publiés par Microsoft Threat Intelligence, Google Threat
-  Intelligence, Trend Micro et Rapid7, chaque entrée avec son lien dans
+  Intelligence, Trend Micro et Rapid7, avec leurs sources citées dans
   `wp_security_forsure/signatures/injection_signatures.yaml`.
 
 ## Feuille de route

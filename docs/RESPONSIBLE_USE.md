@@ -17,8 +17,8 @@ target, what stays your responsibility, and where the legal lines are. It is not
   read-only, but guessing paths is reconnaissance that a site owner did not invite.
 - Each audit has a request budget, and requests carry a user agent that names the tool and links to
   this repository, so the site owner can identify the traffic. Visitor profiles are the exception:
-  about 25 requests on the home page and at most two pages it links present a browser, one of them
-  with an invalid WordPress login cookie, because injections hide from tools and from logged-in
+  about 25 requests on the home page and at most two pages it links present a browser or Googlebot,
+  one of them with an invalid WordPress login cookie, because injections hide from tools and from logged-in
   users. The cookie opens no session.
 
 ## The browser pass (`--render`)
@@ -33,8 +33,11 @@ target, what stays your responsibility, and where the legal lines are. It is not
   `render_third_party: false`.
 - It hides `navigator.webdriver` and the "HeadlessChrome" user agent, because ClearFake serves a clean
   page to automated browsers. This evades the malware's checks, not the site's protections.
-- When a page shows a fake CAPTCHA, it clicks the verification box once, to see what the page puts on
+- When a page shows a full-screen fake CAPTCHA or keyboard instructions, it clicks once an element
+  whose label mentions a verification (robot, human, verify, captcha), to see what the page puts on
   the clipboard. It never clicks anything else.
+- Like the rest of the audit, it accepts invalid TLS certificates, so that a misconfigured site can
+  still be audited.
 
 ## Your responsibility
 
@@ -68,12 +71,14 @@ exposure of a site; penetration testing belongs to other tools and to signed eng
 - Par défaut, il ne demande que la page d'accueil, ses ressources et les points d'entrée publics de
   WordPress. `--authorized` ajoute la recherche de chemins non liés, à réserver à un audit sous mandat
   écrit.
-- Les profils de visite se présentent comme un navigateur, sur l'accueil et au plus deux pages qu'il
-  lie, dont un avec un cookie de connexion WordPress invalide, qui n'ouvre aucune session.
+- Les profils de visite se présentent comme un navigateur ou comme Googlebot, sur l'accueil et au plus
+  deux pages qu'il lie, dont un avec un cookie de connexion WordPress invalide, qui n'ouvre aucune session.
 - `--render` exécute le JavaScript du site, code malveillant compris, dans le bac à sable de Chromium :
   à lancer depuis une machine virtuelle ou un conteneur jetable. Seules les lectures partent ; appels
   de blockchain, navigation vers un autre site, WebSocket et téléchargements sont bloqués, le
-  presse-papiers est intercepté. Seule la case d'un faux CAPTCHA est cliquée, une fois.
+  presse-papiers est intercepté. Sous un faux CAPTCHA plein écran ou des instructions au clavier, un seul
+  élément dont le libellé évoque une vérification est cliqué, une fois. Comme le reste de l'audit, la
+  passe accepte les certificats TLS invalides.
 - Auditer sans droit un système relève de l'article 323-1 du Code pénal ; mettre à disposition un outil
   conçu pour cela « sans motif légitime » relève de l'article 323-3-1. La lecture seule réduit le risque,
   elle ne remplace pas une autorisation.

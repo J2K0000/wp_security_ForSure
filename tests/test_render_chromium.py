@@ -48,10 +48,19 @@ setTimeout(function () { location.href = 'https://ailleurs.example.invalid/'; },
 
 CLEAN = "<!doctype html><html><body><h1>Boulangerie</h1><p>Pain et gâteaux.</p></body></html>"
 
+# Formulaire protégé par un CAPTCHA légitime : pas de superposition plein écran,
+# pas d'instruction au clavier, donc rien n'est cliqué.
+FORM = """<!doctype html><html><body><h1>Contact</h1><form>
+<input name="email"><label><input type="checkbox" id="rgpd"> J'accepte</label>
+<div class="captcha"><label><input type="checkbox" id="nr"> I am not a robot</label></div>
+<p>Protected by reCAPTCHA</p></form>
+<script>document.getElementById('nr').addEventListener('click', () => { document.title = 'clic'; });</script>
+</body></html>"""
+
 
 class _Handler(BaseHTTPRequestHandler):
     routes = {"/": ("text/html", LURE), "/app.js": ("application/javascript", APP),
-              "/propre/": ("text/html", CLEAN)}
+              "/propre/": ("text/html", CLEAN), "/contact/": ("text/html", FORM)}
     seen = []
 
     def do_GET(self):
@@ -125,3 +134,11 @@ def test_clean_page_gives_no_finding(site, renderer):
     assert obs.ok, obs.error
     assert analyze([obs], site) == []
     assert obs.clicked == ""
+
+
+def test_form_captcha_without_overlay_is_not_clicked(site, renderer):
+    obs = renderer.render(site + "/contact/", RenderProfile("victim_google", CHROME_DESKTOP_UA))
+    assert obs.ok, obs.error
+    assert obs.clicked == ""
+    assert analyze([obs], site) == []
+

@@ -23,7 +23,7 @@ This tool takes the opposite position and enforces it in code, not in documentat
 | Graduated access | By default the tool only requests the home page, what it references, and standard public WordPress endpoints (REST API index, feeds, `xmlrpc.php` with `GET`, `wp-login.php`, sitemaps). Guessing unlinked paths (backups, `.env`, `.git/`, plugin slugs) needs `--authorized`, which you should only use with the owner's written permission. Without it, those parts are reported as not performed. |
 | The target cannot turn the scanner against you | Every outgoing request is resolved first and refused if it points to a private, loopback, link-local or reserved address. Redirects are followed by hand, at most 5 hops, only within the target's host and its `www.` variant. Each audit has a request budget. |
 | Secrets stay out of reports | A password, key or salt found in an exposed file is masked at the source and again before any report is written. |
-| Identifiable traffic | Requests carry a user agent that names the tool and links to this repository. Two documented exceptions, because injections hide from tools: visitor profiles present a browser (and the cloaking check presents Googlebot), on the home page and at most two pages it links. |
+| Identifiable traffic | Requests carry a user agent that names the tool and links to this repository. Two documented exceptions, because injections hide from tools: visitor profiles present a browser or Googlebot, and the cloaking check presents Googlebot, on the home page and at most two pages it links. |
 | The browser pass follows the same rules | `--render` is off by default. In Chromium, only `GET`, `HEAD` and `OPTIONS` leave; other methods, blockchain RPC nodes, navigation to another site, WebSockets, downloads and private addresses are blocked and recorded. The clipboard is intercepted, never written. Chromium's sandbox is required: without it the pass does not start. |
 | Errors are not hidden | A check that fails is reported as "not performed", the verdict says the audit is incomplete, and the exit code is `3`. |
 
@@ -87,7 +87,8 @@ what an attacker gains:
   third-party scripts) are matched against published ClickFix and EtherHiding signatures, listed with
   their sources in `wp_security_forsure/signatures/injection_signatures.yaml`. With `--render`, the pages run
   in Chromium: clipboard writes, blockchain calls, JavaScript redirects and fake CAPTCHA overlays are
-  recorded, and a fake CAPTCHA's checkbox is clicked once to reveal the command it copies.
+  recorded. Under a full-screen fake CAPTCHA or keyboard instructions, one element whose label mentions a
+  verification is clicked once to reveal the command the page copies.
 - Takeover and intrusion: component and version fingerprint, known CVEs (raised to critical when listed
   in the CISA Known Exploited Vulnerabilities catalogue), a core version that wordpress.org marks insecure
   or that lags behind its branch, plugins closed on wordpress.org or not updated for 2 years (the tool's
@@ -159,7 +160,7 @@ keep reports private and delete them when the engagement ends.
 - Active exploitation: [CISA Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), downloaded on request.
 - Core and plugin status: the public [WordPress.org API](https://api.wordpress.org/).
 - Injection signatures: indicators published by Microsoft Threat Intelligence, Google Threat
-  Intelligence, Trend Micro and Rapid7, each entry with its link in
+  Intelligence, Trend Micro and Rapid7, with their sources cited in
   `wp_security_forsure/signatures/injection_signatures.yaml`.
 
 ## Roadmap

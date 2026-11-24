@@ -418,3 +418,25 @@ def test_authorized_run_sends_level_2_requests_read_only(authorized_scan):
 
 def test_default_run_sends_fewer_requests_than_authorized(default_scan, authorized_scan):
     assert len(default_scan["recorded"]) < len(authorized_scan["recorded"])
+
+
+# Checks dont des requêtes se présentent comme un navigateur ou comme Googlebot
+# (exceptions documentées dans le README : les injections se cachent des outils).
+_DISGUISED_CHECKS = {"visit_profiles", "cloaking_seo_spam"}
+
+
+def test_every_request_names_the_tool_except_documented_profiles(recorded_calls):
+    """Toute requête porte l'agent identifiable de l'outil, y compris vers les
+    services tiers (wpvulnerability.net, api.wordpress.org) ; seuls les profils
+    de visite et le contrôle du cloaking se présentent autrement."""
+    from wp_security_forsure import USER_AGENT
+    found = []
+    for check, req in recorded_calls:
+        ua = req.headers.get("User-Agent", "")
+        if ua == USER_AGENT:
+            continue
+        disguised = "Chrome/" in ua or "Googlebot" in ua
+        if not (check in _DISGUISED_CHECKS and disguised):
+            found.append(f"{check} {req.method} {req.url} UA={ua!r}")
+    assert not found, chr(10).join(found[:20])
+
