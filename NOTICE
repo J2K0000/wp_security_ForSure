@@ -9,3 +9,8 @@ EPSS model by FIRST (https://www.first.org/epss/). The Known Exploited
 Vulnerabilities catalogue is published by CISA (https://www.cisa.gov/, CC0).
 Core and plugin status come from the WordPress.org API. None of these
 datasets is bundled in this distribution.
+
+wp_security_forsure/signatures/injection_signatures.yaml lists indicators
+(contract addresses, hostnames, strings) published by Microsoft Threat
+Intelligence, Google Threat Intelligence, Trend Micro and Rapid7. Each entry
+links to its source.

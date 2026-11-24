@@ -2,6 +2,10 @@
 timeout: 30           # Timeout HTTP par défaut (secondes)
 # User-Agent : vide = valeur par défaut identifiable, avec l'URL du projet
 # (wp_security_forsure.USER_AGENT). Ne pas usurper un navigateur ou un robot.
+# Exceptions, limitées et documentées : les profils de visite (visit_profiles)
+# et la passe de rendu (--render) se présentent comme un navigateur, et
+# cloaking_seo_spam comme Googlebot, parce que les injections se cachent des
+# outils. Elles ne lisent que l'accueil et quelques pages qu'il lie.
 user_agent: ""
 output_dir: "./reports"
 
@@ -27,6 +31,31 @@ max_response_bytes: 5242880 # Borne de lecture des corps HTTP (5 Mio). 0 = illim
 max_requests: 2000          # Budget de requêtes réseau par audit. 0 = illimité
 skip_reachability: false    # true = ne pas sonder la joignabilité avant l'audit
 
+# Profils de visite (check visit_profiles) : l'accueil et jusqu'à
+# visit_profiles_pages pages internes liées depuis l'accueil, demandés sous
+# 8 profils (clic depuis Google, mobile, autre langue, visite directe x2, faux
+# cookie de connexion invalide, seconde visite, Googlebot). GET seulement.
+visit_profiles: true
+visit_profiles_pages: 2
+# Fichiers .js du site et scripts tiers inconnus lus par client_injection.
+client_injection_max_scripts: 30
+client_injection_max_external: 10
+
+# Passe de rendu Chromium (check browser_render), facultative : --render ou
+# render: true. Nécessite pip install "wp-security-forsure[render]" puis
+# python -m playwright install chromium. Le JavaScript du site s'exécute dans
+# le bac à sable de Chromium : à lancer depuis une machine virtuelle ou un
+# conteneur jetable. Seules GET, HEAD et OPTIONS partent ; appels de
+# blockchain, navigations vers un autre site, WebSocket et téléchargements
+# sont bloqués et notés. render_third_party: false bloque aussi les hôtes
+# tiers (scripts, polices, iframes d'autres sites).
+render: false
+render_third_party: true
+render_max_pages: 2
+render_max_requests: 400     # requêtes autorisées par rendu de page
+render_settle_ms: 5000       # attente après le chargement (chargeurs différés)
+render_timeout_ms: 25000
+
 # Énumération étendue des sous-domaines (check takeover) via Certificate
 # Transparency (crt.sh). false = mode léger (hôte cible + ressources externes
 # de la page). true = énumère les sous-domaines et teste chacun (plus lent,
@@ -36,6 +65,9 @@ takeover_enum: false
 # Priorités : quels checks exécuter et dans quel ordre
 checks:
   # Prio 1, Intrusion & Prise de Contrôle
+  - visit_profiles  # lancé en premier, avant toute requête de l'outil
+  - client_injection  # signatures ClickFix et EtherHiding dans les scripts
+  - browser_render  # facultatif : --render (Chromium, bac à sable)
   - fingerprint
   - vulnerability_scan  # CVE + exploitation active (instantané CISA KEV, refresh-kev)
   - core_branch  # version du cœur : insecure / branche à jour (api.wordpress.org, cache 24 h)

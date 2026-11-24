@@ -1,0 +1,137 @@
+# Signatures d'injections côté navigateur (ClickFix, EtherHiding / ClearFake).
+#
+# Lues par wp_security_forsure/scanner/injection_signatures.py. Chaque motif est
+# une expression régulière Python, appliquée sans tenir compte de la casse. Les
+# signatures ne servent qu'à lire : le scanner ne télécharge ni n'exécute ce
+# qu'elles désignent.
+#
+# Contribuer : ajouter une entrée avec sa source publique (rapport d'éditeur,
+# CERT). Une signature sans source n'est pas acceptée.
+version: 1
+
+clickfix:
+  # Raccourcis clavier du leurre, indépendants de la langue : Rapid7 a vu les
+  # instructions traduites dans au moins 31 langues, la règle YARA de GTIG
+  # cherche les raccourcis plutôt que les phrases.
+  keystrokes:
+    - id: run_dialog
+      label: "raccourci Windows + R ou Windows + X"
+      pattern: '(?:\bwin(?:dows)?\b|⊞)\s*(?:key\s*)?\+\s*[''"]?[rx]\b'
+    - id: paste
+      label: "raccourci de collage Ctrl + V ou Cmd + V"
+      pattern: '(?:\bctrl\b|\bstrg\b|⌃|\bcmd\b|\bcommand\b|⌘)\s*\+\s*[''"]?v\b'
+  # Termes de faux CAPTCHA (Microsoft, août 2025 ; Trend Micro, mai 2026).
+  lure_terms:
+    - '\bcaptcha\b'
+    - '\bturnstile\b'
+    - 'verification\s*id'
+    - 'i\s*am\s*not\s*a\s*robot'
+    - 'je\s+ne\s+suis\s+pas\s+un\s+robot'
+    - 'verify\s+(?:that\s+)?you\s+are\s+(?:a\s+)?human'
+    - 'human\s+verification'
+    - 'cloud\s+identificator'
+    - '\bray\s*id\b'
+  # Écriture dans le presse-papiers depuis le script de la page.
+  clipboard_write:
+    - 'navigator\.clipboard\.write(?:text)?\s*\('
+    - 'execcommand\s*\(\s*[''"](?:copy|cut)[''"]'
+    - 'clipboarddata\.setdata\s*\('
+  # Commandes qu'un site légitime n'a aucune raison de placer dans le
+  # presse-papiers d'un visiteur (Microsoft Threat Intelligence, 21 août 2025 ;
+  # GTIG, 16 octobre 2025 ; Trend Micro, 26 mai 2026).
+  commands:
+    - id: windows_binary
+      pattern: '\b(?:powershell(?:\.exe)?|pwsh|mshta(?:\.exe)?|msiexec|rundll32|bitsadmin|forfiles|wscript|cscript|conhost|certutil)\b'
+    - id: powershell_download
+      pattern: '\b(?:iex|irm|iwr)\b\s*[\(\$''"-]|invoke-(?:webrequest|restmethod|expression)|downloadstring|frombase64string|\[scriptblock\]::create'
+    - id: powershell_flags
+      pattern: '\s-(?:w|windowstyle)\s+h(?:idden)?\b|\s-(?:e|ec|enc|encodedcommand)\s+[a-z0-9+/=]{16,}|\s-nop\b'
+    - id: cmd_c
+      pattern: '\bcmd(?:\.exe)?\s+/[ck]\b'
+    - id: unix_pipe
+      pattern: '\bcurl\s[^|;]{0,300}\|\s*(?:ba|z)?sh\b|/bin/(?:ba|z)?sh\s+-c\s+[''"]?\$\(\s*curl|\bosascript\b'
+    - id: hta
+      pattern: 'hta:application|\.hta\b'
+  source:
+    - https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique
+    - https://cloud.google.com/blog/topics/threat-intelligence/unc5142-etherhiding-distribute-malware
+    - https://www.rapid7.com/blog/post/tr-malicious-websites-wordpress-compromise-advances-global-stealer-operation/
+    - https://www.trendmicro.com/pt_br/research/26/e/smart-contracts-for-command-and-control.html
+
+etherhiding:
+  # Nœuds RPC et explorateurs de blockchain lus par les chargeurs.
+  rpc_hosts:
+    - id: bsc_dataseed
+      pattern: '(?:^|\.)bsc-dataseed\d*(?:-\d+)?\.binance\.org$'
+      source: https://cloud.google.com/blog/topics/threat-intelligence/unc5142-etherhiding-distribute-malware
+    - id: publicnode_rpc
+      pattern: '(?:^|\.)[a-z0-9-]*rpc\.publicnode\.com$'
+      source: https://www.trendmicro.com/pt_br/research/26/e/smart-contracts-for-command-and-control.html
+    - id: explorer_api
+      pattern: '^api\.(?:ethplorer\.io|binplorer\.com|blockchair\.com|blockcypher\.com)$'
+      source: https://cloud.google.com/blog/topics/threat-intelligence/dprk-adopts-etherhiding
+  # Contrats publiés comme infrastructure de commande (comparaison sans casse).
+  contracts:
+    - address: '0x9179dda8B285040Bf381AABb8a1f4a1b8c37Ed53'
+      family: "UNC5142 (CLEARSHORT), routeur principal BSC"
+      source: https://cloud.google.com/blog/topics/threat-intelligence/unc5142-etherhiding-distribute-malware
+    - address: '0x8f386Ac6050b21aF0e34864eAbf0308f89C6f13c'
+      family: "UNC5142 (CLEARSHORT), routeur BSC"
+      source: https://cloud.google.com/blog/topics/threat-intelligence/unc5142-etherhiding-distribute-malware
+    - address: '0xA1decFB75C8C0CA28C10517ce56B710baf727d2e'
+      family: "ClearFake 2026, premier étage (BSC testnet)"
+      source: https://www.trendmicro.com/pt_br/research/26/e/smart-contracts-for-command-and-control.html
+    - address: '0x46790e2Ac7F3CA5a7D1bfCe312d11E91d23383Ff'
+      family: "ClearFake 2026, leurre ClickFix Windows (BSC testnet)"
+      source: https://www.trendmicro.com/pt_br/research/26/e/smart-contracts-for-command-and-control.html
+    - address: '0x68DcE15C1002a2689E19D33A3aE509DD1fEb11A5'
+      family: "ClearFake 2026, leurre macOS (BSC testnet)"
+      source: https://www.trendmicro.com/pt_br/research/26/e/smart-contracts-for-command-and-control.html
+    - address: '0xf4a32588b50a59a82fbA148d436081A48d80832A'
+      family: "ClearFake 2026, traceur (BSC testnet)"
+      source: https://www.trendmicro.com/pt_br/research/26/e/smart-contracts-for-command-and-control.html
+  # Sélecteurs de fonctions du contrat logique UNC5142.
+  selectors:
+    - '0x9f7a7126'
+    - '0x1ba79aa2'
+    - '0xa76e7648'
+    - '0xa98b06d3'
+  rpc_call:
+    jsonrpc: '[''"]?jsonrpc[''"]?\s*:\s*[''"]2\.0[''"]'
+    method: '\beth_call\b'
+    client: 'new\s+web3\s*\(|web3\.eth\.contract|new\s+ethers\.(?:providers\.)?jsonrpcprovider'
+    address: '\b0x[a-f0-9]{40}\b'
+  # Chaîne de décodage du premier étage UNC5142 : atob puis pako.ungzip puis eval.
+  loader_chain:
+    decode: '\batob\s*\('
+    inflate: '\b(?:ungzip|inflate)\s*\('
+    run: '\beval\s*\(|\bnew\s+function\s*\(|\bfunction\s*\(\s*[''"`]'
+  # Bibliothèques chargées par le premier étage UNC5142 depuis un CDN.
+  libraries:
+    - id: web3
+      pattern: '(?:^|/)web3(?:@[^/]*)?/(?:dist/)?web3(?:\.min)?\.js|(?:^|/)web3(?:\.min)?\.js$'
+    - id: ethers
+      pattern: '(?:^|/)ethers(?:@[^/]*)?/(?:dist/)?ethers(?:\.umd)?(?:\.min)?\.js|(?:^|/)ethers(?:\.umd)?(?:\.min)?\.js$'
+    - id: pako
+      pattern: '(?:^|/)pako(?:@[^/]*)?/(?:dist/)?pako(?:_inflate)?(?:\.min)?\.js|/pako/[\d.]+/pako(?:\.min)?\.js'
+    - id: crypto_js
+      pattern: '(?:^|/)crypto-js(?:@[^/]*)?/(?:crypto-js|aes)(?:\.min)?\.js|/crypto-js/[\d.]+/crypto-js(?:\.min)?\.js'
+
+# Marqueurs propres à une campagne : chaînes relevées dans les rapports publiés.
+campaign_markers:
+  - id: rapid7_ajjs
+    pattern: '\bajjs_run\b'
+    family: "chargeur ClickFix « ajjs » servi par admin-ajax.php (Rapid7, 2026)"
+    source: https://www.rapid7.com/blog/post/tr-malicious-websites-wordpress-compromise-advances-global-stealer-operation/
+  - id: rapid7_jsrepo
+    pattern: '/jsrepo\?rnd='
+    family: "chargeur ClickFix « jsrepo » (Rapid7, 2026)"
+    source: https://www.rapid7.com/blog/post/tr-malicious-websites-wordpress-compromise-advances-global-stealer-operation/
+  - id: unc5142_log
+    pattern: 'road\s+unavaible'
+    family: "premier étage UNC5142 (message de journal, faute comprise)"
+    source: https://cloud.google.com/blog/topics/threat-intelligence/unc5142-etherhiding-distribute-malware
+  - id: clearfake_sandbox
+    pattern: 'stop\s+watching\s+us\s*:\)'
+    family: "ClearFake 2026 (message affiché quand un bac à sable est détecté)"
+    source: https://www.trendmicro.com/pt_br/research/26/e/smart-contracts-for-command-and-control.html

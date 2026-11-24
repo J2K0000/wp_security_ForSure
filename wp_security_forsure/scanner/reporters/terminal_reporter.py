@@ -9,9 +9,10 @@ from rich import box
 
 from . import BaseReporter
 from ..checks.base import CheckResult, SEVERITIES
-from ..access_tiers import AUTHORIZED_WARNING, SKIPPED_LABEL, access_level
+from ..access_tiers import AUTHORIZED_WARNING, access_level
 from ..status import (ERROR_LABEL, audit_is_complete, error_results, is_error,
-                      incomplete_label, is_skipped, ok_results, skipped_results)
+                      incomplete_label, is_skipped, ok_results, skip_label,
+                      skipped_results)
 from ..vulndb import freshness
 from .guidance import (RECOMMENDATIONS_TITLE, audit_limits_block, incident_block,
                        recommendations_block)
@@ -148,7 +149,7 @@ class TerminalReporter(BaseReporter):
         for result in self.results:
             if is_skipped(result):
                 console.print(f"\n[dim]{_e('[NON RÉALISÉ]')}[/] [bold]{_e(result.title)}[/] : "
-                              f"{_e(SKIPPED_LABEL)}")
+                              f"{_e(skip_label(result))}")
                 continue
             if is_error(result):
                 console.print(f"\n{SEVERITY_ICONS['ERROR']} [bold]{_e('[ERREUR]')}[/] "

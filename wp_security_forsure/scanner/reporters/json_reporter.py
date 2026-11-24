@@ -11,7 +11,7 @@ from ..redact import redact_obj
 from ..access_tiers import access_level
 from ..status import (STATUS_LABELS, STATUS_SKIPPED, audit_is_complete,
                       error_results, get_status, incomplete_label, ok_results,
-                      skipped_results)
+                      skip_label, skipped_results)
 from ..vulndb import freshness
 
 
@@ -71,7 +71,8 @@ class JSONReporter(BaseReporter):
                 "check_name": result.check_name,
                 "title": result.title,
                 "status": status,
-                "status_label": STATUS_LABELS[status],
+                "status_label": (skip_label(result) if status == STATUS_SKIPPED
+                                 else STATUS_LABELS[status]),
                 "severity": result.severity,
                 # Non lancé faute de --authorized : ni échec ni conformité.
                 "passed": None if status == STATUS_SKIPPED else result.passed,

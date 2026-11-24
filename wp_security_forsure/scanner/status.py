@@ -44,6 +44,12 @@ def error_results(results) -> list:
     return [r for r in results if is_error(r)]
 
 
+def skip_label(result) -> str:
+    """Pourquoi un contrôle n'a pas été lancé : faute de --authorized par
+    défaut, ou passe facultative non demandée (attribut ``skip_reason``)."""
+    return getattr(result, "skip_reason", None) or SKIPPED_LABEL
+
+
 def is_skipped(result) -> bool:
     return get_status(result) == STATUS_SKIPPED
 

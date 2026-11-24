@@ -13,9 +13,10 @@ from . import BaseReporter
 from .guidance import (RECOMMENDATIONS_TITLE, audit_limits_block, incident_block,
                        recommendations_block)
 from .impact import exposure_surface, narrative, harvest_example
-from ..access_tiers import AUTHORIZED_WARNING, SKIPPED_LABEL, access_level
+from ..access_tiers import AUTHORIZED_WARNING, access_level
 from ..status import (ERROR_LABEL, audit_is_complete, error_results,
-                      incomplete_label, ok_results, skipped_results)
+                      incomplete_label, ok_results, skip_label,
+                      skipped_results)
 from ..vulndb import freshness
 
 
@@ -499,7 +500,7 @@ class HTMLReporter(BaseReporter):
         if skipped:
             items = "".join(
                 f"<li><strong>{html.escape(str(r.title))}</strong> : "
-                f"{html.escape(SKIPPED_LABEL)}</li>" for r in skipped)
+                f"{html.escape(skip_label(r))}</li>" for r in skipped)
             skipped_html = (
                 f"<div class='card'><p><strong>{len(skipped)} contrôle(s) non "
                 "réalisé(s), ni échec ni conformité :</strong></p>"

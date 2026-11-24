@@ -55,6 +55,13 @@ WP_SECURITY_FORSURE_CACHE_DIR."""
 
 _FORMAT_BY_EXTENSION = {".html": "html", ".htm": "html", ".json": "json"}
 
+RENDER_HELP = (
+    "Passe facultative : exécute l'accueil et une page interne dans Chromium "
+    "(bac à sable actif, lecture seule) pour voir les faux CAPTCHA ClickFix et "
+    "les chargeurs EtherHiding construits par JavaScript. Nécessite pip install "
+    "\"wp-security-forsure[render]\" et python -m playwright install chromium. "
+    "Le JavaScript du site s'exécute : à lancer depuis une machine jetable.")
+
 AUTHORIZED_HELP = (
     "Réservée à l'audit d'un site dont on a l'autorisation écrite du "
     "propriétaire. Active la recherche de chemins non liés (niveau 2 : "
@@ -223,6 +230,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Chemin vers config personnalisée")
     parser.add_argument("--authorized", action="store_true", default=False,
                         help=AUTHORIZED_HELP)
+    parser.add_argument("--render", action="store_true", default=False,
+                        help=RENDER_HELP)
     parser.add_argument("--clear", action="store_true", help="vulncache : vider le cache")
     parser.add_argument("--info", action="store_true", help="vulncache : afficher l'état du cache")
     return parser
@@ -290,6 +299,8 @@ def main(argv=None):
     config["timeout"] = args.timeout
     # Niveau 2 : option CLI, ou clé `authorized` de la configuration.
     config["authorized"] = bool(args.authorized or config.get("authorized"))
+    # Passe de rendu : option CLI, ou clé `render` de la configuration.
+    config["render"] = bool(args.render or config.get("render"))
 
     # Checks demandés ou tous. Un nom inconnu est une erreur d'usage (code 2).
     checks_list = None

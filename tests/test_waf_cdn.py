@@ -197,17 +197,32 @@ def test_generic_waf_no_longer_inferred_from_payload_responses():
 
 
 @responses.activate
-def test_challenge_page_captcha_detected():
+def test_challenge_page_vendor_marker_detected():
     _register_baseline(
-        home_body="<html><body>Please solve the "
-                  "<div class='g-recaptcha'></div> captcha</body></html>",
+        home_body="<html><body><script>window._cf_chl_opt={cType:'managed'};"
+                  "</script><div id='challenge-platform'></div></body></html>",
     )
     chk = _mk()
     result = chk.run()
 
     challenge = _named(result.findings, "challenge page")
     assert challenge, result.findings
-    assert "captcha" in challenge[0]["evidence"].lower()
+    assert "challenge-platform" in challenge[0]["evidence"].lower()
+
+
+@responses.activate
+def test_captcha_word_is_not_read_as_a_waf():
+    """Un widget reCAPTCHA de formulaire ou un faux CAPTCHA (ClickFix) ne
+    prouvent pas un WAF : les présenter comme une protection rassure à tort."""
+    _register_baseline(
+        home_body="<html><body>Please solve the "
+                  "<div class='g-recaptcha'></div> captcha. Verify you are "
+                  "human: press Windows + R</body></html>",
+    )
+    chk = _mk()
+    result = chk.run()
+
+    assert _named(result.findings, "challenge page") == []
 
 
 @responses.activate

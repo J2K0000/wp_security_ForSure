@@ -18,6 +18,7 @@ Categories checked:
  12) DB dumps in root    , credential leak (CRITICAL)
 """
 
+import re
 from typing import Dict, List
 
 from ..redact import redact_text
@@ -100,6 +101,19 @@ class FileExposureCheck(BaseCheck):
                 "[remote", "[core", "repositoryformatversion",
                 "ref:", "refs/heads",
             ],
+            "is_directory": False,
+        },
+        # 6bis) .user.ini : auto_prepend_file sert de persistance aux portes
+        # dérobées (malware « SC », Sucuri, septembre 2026). Fichier texte,
+        # lisible sans rien exécuter.
+        {
+            "paths": [".user.ini"],
+            "label": ".user.ini",
+            "severity": "MEDIUM",
+            "indicators": ["auto_prepend_file", "auto_append_file",
+                           "upload_max_filesize", "memory_limit",
+                           "max_execution_time", "post_max_size",
+                           "display_errors", "error_log"],
             "is_directory": False,
         },
         # 6) .env / .env.local / env.php, CRITICAL
@@ -445,6 +459,10 @@ class FileExposureCheck(BaseCheck):
                 content_length=content_length, body=body,
             )
 
+        if label == ".user.ini":
+            self._check_user_ini(url, status, content_type, body)
+            return
+
         if "install.php" in path and is_already_installed(body):
             self._result.add_finding(
                 message="wp-admin/install.php, WordPress déjà installé (non exploitable)",
@@ -506,6 +524,56 @@ class FileExposureCheck(BaseCheck):
                 url=url,
                 confidence="potential",
             )
+
+    # Pare-feu applicatifs qui chargent légitimement leur code par
+    # auto_prepend_file (le fichier reste à protéger, mais n'est pas suspect).
+    _KNOWN_PREPEND = ("wordfence-waf.php", "ninjafirewall", "bbq-firewall",
+                      "malcare", "sucuri", "aios-bootstrap.php")
+    _PREPEND_RE = re.compile(
+        r"^\s*(auto_(?:prepend|append)_file)\s*=\s*[\"']?([^\"'\r\n;]*)",
+        re.I | re.M)
+
+    def _check_user_ini(self, url: str, status: int, content_type: str,
+                        body: str) -> None:
+        """.user.ini servi : divulgation d'information, et auto_prepend_file
+        vers un fichier inconnu (persistance de porte dérobée possible)."""
+        if status != 200 or "<html" in body[:500].lower():
+            return
+        settings = self._PREPEND_RE.findall(body)
+        if not settings and not any(
+                k in body.lower() for k in ("upload_max_filesize", "memory_limit",
+                                            "max_execution_time", "post_max_size",
+                                            "display_errors", "error_log")):
+            return
+        self._result.add_finding(
+            message=".user.ini lisible depuis le Web (divulgation d'information)",
+            severity="MEDIUM",
+            evidence=(f"HTTP {status} | Content-Type: {content_type}. Le serveur "
+                      "devrait refuser les fichiers .user.ini. Extrait : "
+                      + redact_text(body[:300]).strip()),
+            url=url, confidence="confirmed")
+        for key, value in settings:
+            value = value.strip()
+            if not value or value.lower() == "none":
+                continue
+            known = any(k in value.lower() for k in self._KNOWN_PREPEND)
+            if known:
+                self._result.add_finding(
+                    message=f".user.ini : {key} charge un pare-feu applicatif connu",
+                    severity="INFO", evidence=f"{key} = {value[:160]}",
+                    url=url, confidence="confirmed")
+            else:
+                self._result.add_finding(
+                    message=(f".user.ini : {key} pointe vers un fichier inconnu, "
+                             "code injecté possible avant chaque page"),
+                    severity="CRITICAL",
+                    evidence=(f"{key} = {value[:160]}. PHP exécute ce fichier avant "
+                              "(ou après) chaque script du site : emplacement de "
+                              "persistance du malware « SC » documenté par Sucuri en "
+                              "septembre 2026. Vérifier son contenu en mode "
+                              "authentifié ; le scanner ne le demande pas (un GET "
+                              "l'exécuterait)."),
+                    url=url, confidence="potential")
 
     # Marqueurs propres à un vrai formulaire d'installation WP ouvert, pas
     # seulement le mot générique "WordPress" (présent sur presque toutes

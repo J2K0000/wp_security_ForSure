@@ -384,6 +384,7 @@ class BaseCheck:
         self.session._wpsf_request_count = count + 1
 
     def _send(self, method: str, url: str, allow_redirects: bool = True,
+              client: Optional[requests.Session] = None, record: bool = True,
               **kwargs) -> requests.Response:
         """Émet une requête passive : garde de méthode, garde SSRF, budget,
         corps borné, redirections suivies à la main dans le périmètre.
@@ -391,18 +392,27 @@ class BaseCheck:
         Une redirection vers un hôte hors périmètre n'est pas suivie : la
         réponse 3xx est rendue telle quelle. Au-delà de MAX_REDIRECTS sauts,
         TooManyRedirects est levée.
+
+        `client` : session distincte (profil de visite à cookies isolés), à
+        laquelle la garde passive est montée ; le budget et les ressources
+        référencées restent ceux de la session de l'audit. `record=False` : les
+        ressources que cite la réponse ne sont pas notées comme référencées
+        (variante servie à un profil de visite, possiblement injectée).
         """
         method = check_method(method)
         tier = self._enforce_access(method, url, kwargs.get("params"))
         kwargs.setdefault("timeout", self.config.get("timeout", 30))
         kwargs.setdefault("stream", True)
+        sender = client if client is not None else self.session
+        if sender is not self.session:
+            install_passive_guard(sender)
         scope = self._scope_hosts(url)
         history: List[requests.Response] = []
         while True:
             check_destination(url)
             self._consume_budget()
-            resp = self.session.request(method, url, allow_redirects=False,
-                                        **kwargs)
+            resp = sender.request(method, url, allow_redirects=False,
+                                  **kwargs)
             if method == "HEAD":
                 # Une réponse HEAD n'a pas de corps : rien à lire.
                 resp._content = b""
@@ -413,8 +423,8 @@ class BaseCheck:
             if not (allow_redirects and resp.is_redirect):
                 break
             location = resp.headers.get("location")
-            if hasattr(self.session, "get_redirect_target"):
-                location = self.session.get_redirect_target(resp) or location
+            if hasattr(sender, "get_redirect_target"):
+                location = sender.get_redirect_target(resp) or location
             if not location:
                 break
             next_url = urljoin(resp.url or url, requote_uri(location))
@@ -437,9 +447,30 @@ class BaseCheck:
             url = next_url
         if history:
             resp.history = history
-        if method != "HEAD":
+        if method != "HEAD" and record:
             record_references(self.session, resp, self.target, tier)
         return resp
+
+    def profile_client(self) -> requests.Session:
+        """Session à cookies vierges pour un profil de visite, garde passive
+        montée (méthode, SSRF), même politique de certificats que l'audit."""
+        client = requests.Session()
+        client.verify = getattr(self.session, "verify", False)
+        install_passive_guard(client)
+        return client
+
+    def references(self) -> dict:
+        """Ressources déjà vues comme référencées pendant l'audit."""
+        return session_references(self.session)
+
+    def profile_get(self, url: str, client: requests.Session,
+                    headers: dict, allow_redirects: bool = True) -> requests.Response:
+        """GET d'un profil de visite : session à cookies isolés (`client`),
+        en-têtes du profil, mêmes gardes que http_get (méthode, SSRF, niveaux
+        d'accès, budget, corps borné, redirections dans le périmètre), jamais
+        mis en cache, ressources citées non notées comme référencées."""
+        return self._send("GET", url, allow_redirects=allow_redirects,
+                          client=client, record=False, headers=headers)
 
     # ── Niveaux d'accès ──────────────────────────────────────────────────
 

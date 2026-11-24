@@ -261,10 +261,14 @@ class WafCdnCheck(BaseCheck):
     # ── 7. Generic WAF Detection ─────────────────────────────────────────
 
     def _check_generic_waf(self) -> None:
-        """Détecte une page de challenge / CAPTCHA servie normalement (passif).
+        """Détecte une page de challenge de WAF servie normalement (passif).
 
         Aucune requête malveillante n'est envoyée : seule la page d'accueil,
-        telle que servie à un visiteur, est analysée.
+        telle que servie à un visiteur, est analysée. Seuls les marqueurs
+        propres à une page de challenge d'éditeur comptent : le mot
+        « captcha » ou un widget reCAPTCHA de formulaire ne prouvent pas un
+        WAF, et un faux CAPTCHA ClickFix serait alors présenté comme une
+        protection (voir le check client_injection).
         """
         baseline_body = ""
 
@@ -280,24 +284,20 @@ class WafCdnCheck(BaseCheck):
             )
             return
 
-        # Check for challenge pages / CAPTCHA / JS challenges on normal page
+        # Marqueurs de page de challenge d'éditeur (Cloudflare, SiteGround).
         challenge_keywords = [
-            "document.cookie",
-            "window.location",
-            "g-recaptcha",
-            "h-captcha",
-            "cf-turnstile",
             "cf-browser-verification",
             "challenge-platform",
             "cf-challenge",
-            "captcha",
+            "_cf_chl_opt",
+            "sgcaptcha",
         ]
         found_challenges = [
             kw for kw in challenge_keywords if kw in baseline_body
         ]
         if found_challenges:
             self._result.add_finding(
-                message="Challenge page or CAPTCHA detected, WAF likely present",
+                message="Challenge page detected (WAF vendor marker), WAF likely present",
                 severity="INFO",
                 evidence=f"Keywords found: {', '.join(found_challenges)}",
                 url=self.target,

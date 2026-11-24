@@ -34,6 +34,9 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
+The browser pass tests (`-m render`) also need `pip install -e ".[dev,render]"` and
+`python -m playwright install chromium`; without them they are skipped.
+
 Tests run offline: HTTP responses are simulated with `responses` and DNS resolution is stubbed in
 `tests/conftest.py`.
 
@@ -51,6 +54,15 @@ Tests run offline: HTTP responses are simulated with `responses` and DNS resolut
    order. A check that is not listed there only runs when named with `--checks`.
 4. Write tests first: one that fails without your check, one for a clean site, and one for each false
    positive you can think of. The passivity test covers your check automatically.
+
+## Adding an injection signature
+
+Signatures for client-side injections live in `wp_security_forsure/signatures/injection_signatures.yaml`.
+Each entry needs a public source (vendor report, CERT advisory) in its `source` field; an entry
+without one is declined. Prefer patterns that survive translation (keyboard shortcuts, contract
+addresses, hostnames) over sentences. Add a test in `tests/test_injection_signatures.py` that builds
+the sample at run time, piece by piece: a complete lure stored in a file can be quarantined by
+antivirus software.
 
 ## Pull requests
 

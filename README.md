@@ -23,6 +23,8 @@ This tool takes the opposite position and enforces it in code, not in documentat
 | Graduated access | By default the tool only requests the home page, what it references, and standard public WordPress endpoints (REST API index, feeds, `xmlrpc.php` with `GET`, `wp-login.php`, sitemaps). Guessing unlinked paths (backups, `.env`, `.git/`, plugin slugs) needs `--authorized`, which you should only use with the owner's written permission. Without it, those parts are reported as not performed. |
 | The target cannot turn the scanner against you | Every outgoing request is resolved first and refused if it points to a private, loopback, link-local or reserved address. Redirects are followed by hand, at most 5 hops, only within the target's host and its `www.` variant. Each audit has a request budget. |
 | Secrets stay out of reports | A password, key or salt found in an exposed file is masked at the source and again before any report is written. |
+| Identifiable traffic | Requests carry a user agent that names the tool and links to this repository. Two documented exceptions, because injections hide from tools: visitor profiles present a browser (and the cloaking check presents Googlebot), on the home page and at most two pages it links. |
+| The browser pass follows the same rules | `--render` is off by default. In Chromium, only `GET`, `HEAD` and `OPTIONS` leave; other methods, blockchain RPC nodes, navigation to another site, WebSockets, downloads and private addresses are blocked and recorded. The clipboard is intercepted, never written. Chromium's sandbox is required: without it the pass does not start. |
 | Errors are not hidden | A check that fails is reported as "not performed", the verdict says the audit is incomplete, and the exit code is `3`. |
 
 ## Install
@@ -31,6 +33,13 @@ Python 3.10 or later.
 
 ```bash
 pip install "git+https://github.com/J2K0000/wp_security_ForSure"
+```
+
+The optional browser pass needs Playwright and Chromium:
+
+```bash
+pip install "wp-security-forsure[render] @ git+https://github.com/J2K0000/wp_security_ForSure"
+python -m playwright install chromium
 ```
 
 A PyPI package (`wp-security-forsure`) will follow.
@@ -43,6 +52,7 @@ wp-security-forsure audit https://example.com
 wp-security-forsure audit https://example.com --output report.html
 wp-security-forsure audit https://example.com --checks fingerprint,vulnerability_scan --format json
 wp-security-forsure audit https://example.com --authorized   # only with the owner's written permission
+wp-security-forsure audit https://example.com --render       # also run pages in a sandboxed Chromium
 wp-security-forsure refresh-kev    # download the CISA KEV catalogue (network, on request only)
 wp-security-forsure refresh-epss   # download EPSS scores (network, on request only)
 ```
@@ -69,6 +79,15 @@ Each finding carries a confidence level. `confirmed` means the evidence is deter
 `wp-security-forsure list` prints the current catalogue with descriptions. Checks are grouped by
 what an attacker gains:
 
+- Client-side injections: the home page and up to two pages it links, fetched under eight visitor
+  profiles (click from Google, mobile, another language, two direct visits, an invalid WordPress login
+  cookie, a returning visitor, Googlebot). Scripts, iframes and redirects that only some profiles get
+  are reported; a difference only counts if the page does not already vary between two direct visits.
+  Scripts served to visitors (inline, `data:` URLs decoded, the site's `.js` files, a few unknown
+  third-party scripts) are matched against published ClickFix and EtherHiding signatures, listed with
+  their sources in `wp_security_forsure/signatures/injection_signatures.yaml`. With `--render`, the pages run
+  in Chromium: clipboard writes, blockchain calls, JavaScript redirects and fake CAPTCHA overlays are
+  recorded, and a fake CAPTCHA's checkbox is clicked once to reveal the command it copies.
 - Takeover and intrusion: component and version fingerprint, known CVEs (raised to critical when listed
   in the CISA Known Exploited Vulnerabilities catalogue), a core version that wordpress.org marks insecure
   or that lags behind its branch, plugins closed on wordpress.org or not updated for 2 years (the tool's
@@ -76,10 +95,13 @@ what an attacker gains:
   risky account names (`admin`, `test`, the site's own name), REST API batch exposure
   (wp2shell), plugin REST routes that accept a user URL, nulled plugins, notable plugin attack surface,
   login exposure and user enumeration, WordPress features (XML-RPC, oEmbed, application passwords),
-  exposed files and database dumps, signs of injected code, cloaking and SEO spam, open comments on an article.
+  exposed files and database dumps (with `--authorized`, a readable `.user.ini` whose
+  `auto_prepend_file` points to an unknown file), signs of injected code, cloaking and SEO spam, open
+  comments on an article.
 - Data exposure: REST API content and users, cookies and sessions, third-party scripts,
   TLS configuration, email authentication (SPF, DKIM, DMARC), webhook receivers.
-- Hardening: security headers, server configuration, WAF and CDN detection, subdomain takeover,
+- Hardening: security headers, server configuration, WAF and CDN detection (a CAPTCHA alone is not
+  read as a WAF: a fake one would pass for a protection), subdomain takeover,
   cache plugins, multisite.
 
 ## What it does not see
@@ -90,9 +112,11 @@ A black-box, read-only audit has limits. The report states them instead of repor
   a drop-in, the database or a scheduled task is invisible from outside. Answering "am I already
   hacked?" needs server access: `wp core verify-checksums`, `wp plugin verify-checksums`, a review of
   `wp-content/mu-plugins/`, drop-ins, administrators and options.
-- **Injections served to some visitors only.** Current malware campaigns hide from command-line
-  clients, logged-in users and visitors without a search-engine referer. This version reads static
-  HTML with an identifiable user agent and does not run JavaScript, so it can miss them.
+- **Part of the injections served to some visitors only.** Visitor profiles cover the referer, the
+  device, the language, the login cookie and a second visit. They cannot trigger cloaking that checks
+  Googlebot's IP address, nor targeting by country or by visitor IP: every visit leaves from your
+  address. Without `--render`, conditions evaluated in JavaScript (localStorage, automation
+  detection) are not seen.
 - **Hidden versions.** When a site masks every version signal, CVE matching cannot rely on it.
   No version found is not proof of no vulnerability.
 - **Anything behind authentication**, and Google Search Console's security and manual action reports,
@@ -110,6 +134,8 @@ Besides the target, an audit contacts:
 | `api.wordpress.org` | Core release status (`stable-check`, `version-check`) | Every audit, cached 24 hours |
 | `api.wordpress.org` | Plugin information: closed, abandoned, nulled copies | For each detected plugin, cached 7 days |
 | Hosts referenced by the home page | Dangling third-party services (takeover check) | Every audit (DNS and `GET`, same guards) |
+| Third-party script hosts | Content of up to 10 unknown scripts referenced by the audited pages (well-known services and blockchain libraries excluded) | Every audit |
+| Hosts the pages load (scripts, fonts, iframes) | What a visitor's browser loads, in Chromium, `GET` only | Only with `--render` (`render_third_party: false` blocks them) |
 | Your DNS resolver | SPF, DKIM and DMARC records | Every audit |
 | `crt.sh` | Subdomain enumeration | Only with `takeover_enum: true` in the configuration |
 | EPSS data file | Exploit prediction scores | Only when you run `wp-security-forsure refresh-epss` |
@@ -123,7 +149,7 @@ from and how old it is.
 ## Responsible use
 
 Run it on sites you own or are mandated to audit. Read [docs/RESPONSIBLE_USE.md](docs/RESPONSIBLE_USE.md)
-before using `--authorized`. Usernames and email addresses found during an audit are personal data:
+before using `--authorized` or `--render`. Usernames and email addresses found during an audit are personal data:
 keep reports private and delete them when the engagement ends.
 
 ## Data sources
@@ -132,14 +158,15 @@ keep reports private and delete them when the engagement ends.
 - Exploit prediction: [EPSS by FIRST](https://www.first.org/epss/), downloaded on request.
 - Active exploitation: [CISA Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), downloaded on request.
 - Core and plugin status: the public [WordPress.org API](https://api.wordpress.org/).
+- Injection signatures: indicators published by Microsoft Threat Intelligence, Google Threat
+  Intelligence, Trend Micro and Rapid7, each entry with its link in
+  `wp_security_forsure/signatures/injection_signatures.yaml`.
 
 ## Roadmap
 
-- Several visitor profiles (search-engine referer, mobile, returning visitor) whose scripts, iframes
-  and redirects are compared.
-- An optional sandboxed browser pass for client-side injections.
 - A read-only authenticated mode for integrity checks (checksums, drop-ins, mu-plugins, administrators).
 - SARIF output and a `diff` between two reports.
+- An offline WPVulnerability snapshot, and watched plugin lists fed by CVE data.
 
 ## Contributing
 

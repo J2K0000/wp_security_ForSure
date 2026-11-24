@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 # Registre des checks disponibles : nom -> classe
 CHECK_REGISTRY = {}
 
+# Checks lancés avant la sonde de joignabilité (voir ScanEngine.run_all).
+PRE_PROBE_CHECKS = ("visit_profiles",)
+
 def _discover_checks():
     """Découvre automatiquement tous les modules de check dans scanner/checks/."""
     from . import checks as checks_package
@@ -52,7 +55,8 @@ _DEFAULT_PRIORITY = {
         "auth_bypass_state", "nulled_plugins", "high_risk_plugins",
         "forms_upload", "malware_detection", "cloaking_seo_spam",
         "brute_force_login", "wp_features", "file_exposure",
-        "database_exposure"), 1),
+        "database_exposure", "visit_profiles", "client_injection",
+        "browser_render"), 1),
     **dict.fromkeys((
         "rest_api", "webhook_exposure", "cookies_sessions",
         "third_party_scripts", "ssl_tls", "email_auth"), 2),
@@ -233,72 +237,91 @@ class ScanEngine:
         return results
 
     def run_all(self) -> List[CheckResult]:
-        """Exécute tous les checks dans l'ordre, en respectant depends_on."""
+        """Exécute tous les checks dans l'ordre, en respectant depends_on.
+
+        Les checks de PRE_PROBE_CHECKS passent avant la sonde de joignabilité :
+        la première visite de l'audit est celle d'un profil de navigateur,
+        avant toute requête de l'outil (certaines injections ne se déclenchent
+        qu'une fois par visiteur ou par adresse IP).
+        """
         results = []
+        check_names = self._resolve_order(self._requested_checks())
+        early = [n for n in check_names if n in PRE_PROBE_CHECKS]
+        for name in early:
+            results.append(self._run_check(name))
         if not self.config.get("skip_reachability"):
             unreachable = self._probe_reachability()
             if unreachable is not None:
                 return [unreachable]
-        check_names = self._resolve_order(self._requested_checks())
-
-        executed = set()
         for name in check_names:
-            if name not in CHECK_REGISTRY:
-                continue
-            check_class = CHECK_REGISTRY[name]
-            if (getattr(check_class, "access_tier", TIER_HOME) >= TIER_UNLINKED
-                    and not self.config.get("authorized")):
-                # Check entièrement fait de chemins devinés : non lancé.
-                results.append(set_status(CheckResult(
-                    check_name=name,
-                    title=getattr(check_class, "title", name),
-                    description=getattr(check_class, "description", ""),
-                    severity="INFO",
-                    passed=False,
-                ), STATUS_SKIPPED))
-                continue
-            try:
-                check_instance = check_class(self.target, self.config, self.session)
-                check_instance.context = self.context   # contexte partagé
-                result = check_instance.run()
-                if not isinstance(result, CheckResult):
-                    raise TypeError(
-                        f"run() a renvoyé {type(result).__name__} au lieu "
-                        "d'un CheckResult")
-                results.append(set_status(result, STATUS_OK))
-                executed.add(name)
-            except AccessPolicyViolation as e:
-                # Requête mal classée (niveau 2 sans --authorized) ou interdite
-                # à tout niveau : statut « error », jamais un silence.
-                logger.error("Check %r : %s", name, e)
-                message = ("requête de niveau 2 sans --authorized"
-                           if isinstance(e, AccessTierRequired)
-                           else "requête interdite à tout niveau d'accès")
-                results.append(set_status(CheckResult(
-                    check_name=name,
-                    title=getattr(check_class, "title", name),
-                    description=getattr(check_class, "description", ""),
-                    severity="INFO",
-                    passed=False,
-                    findings=[{
-                        "message": message,
-                        "severity": "INFO", "evidence": str(e)[:300],
-                        "url": getattr(e, "url", ""), "confidence": "confirmed",
-                    }],
-                ), STATUS_ERROR))
-            except Exception as e:
-                # Statut « error » : jamais présenté comme contrôle conforme.
-                logger.exception("Échec du check %r pendant l'exécution", name)
-                results.append(set_status(CheckResult(
-                    check_name=name,
-                    title=getattr(check_class, "title", name),
-                    description=getattr(check_class, "description", ""),
-                    severity="INFO",
-                    passed=False,
-                    findings=[{
-                        "message": f"Erreur lors de l'exécution : {e}",
-                        "severity": "INFO", "evidence": str(e)[:200],
-                        "url": "", "confidence": "confirmed",
-                    }],
-                ), STATUS_ERROR))
+            if name in CHECK_REGISTRY and name not in early:
+                results.append(self._run_check(name))
         return self._dedup_findings(results)
+
+    def _skipped(self, name: str, check_class, reason: str = "") -> CheckResult:
+        result = set_status(CheckResult(
+            check_name=name,
+            title=getattr(check_class, "title", name),
+            description=getattr(check_class, "description", ""),
+            severity="INFO",
+            passed=False,
+        ), STATUS_SKIPPED)
+        if reason:
+            result.skip_reason = reason
+        return result
+
+    def _run_check(self, name: str) -> CheckResult:
+        """Exécute un check et pose son statut (ok, error ou skipped)."""
+        check_class = CHECK_REGISTRY[name]
+        if (getattr(check_class, "access_tier", TIER_HOME) >= TIER_UNLINKED
+                and not self.config.get("authorized")):
+            # Check entièrement fait de chemins devinés : non lancé.
+            return self._skipped(name, check_class)
+        opt_in = getattr(check_class, "opt_in", "")
+        if opt_in and not self.config.get(opt_in):
+            # Passe facultative non demandée (ex. --render).
+            return self._skipped(name, check_class,
+                                 getattr(check_class, "skip_reason", ""))
+        try:
+            check_instance = check_class(self.target, self.config, self.session)
+            check_instance.context = self.context   # contexte partagé
+            result = check_instance.run()
+            if not isinstance(result, CheckResult):
+                raise TypeError(
+                    f"run() a renvoyé {type(result).__name__} au lieu "
+                    "d'un CheckResult")
+            return set_status(result, STATUS_OK)
+        except AccessPolicyViolation as e:
+            # Requête mal classée (niveau 2 sans --authorized) ou interdite
+            # à tout niveau : statut « error », jamais un silence.
+            logger.error("Check %r : %s", name, e)
+            message = ("requête de niveau 2 sans --authorized"
+                       if isinstance(e, AccessTierRequired)
+                       else "requête interdite à tout niveau d'accès")
+            return set_status(CheckResult(
+                check_name=name,
+                title=getattr(check_class, "title", name),
+                description=getattr(check_class, "description", ""),
+                severity="INFO",
+                passed=False,
+                findings=[{
+                    "message": message,
+                    "severity": "INFO", "evidence": str(e)[:300],
+                    "url": getattr(e, "url", ""), "confidence": "confirmed",
+                }],
+            ), STATUS_ERROR)
+        except Exception as e:
+            # Statut « error » : jamais présenté comme contrôle conforme.
+            logger.exception("Échec du check %r pendant l'exécution", name)
+            return set_status(CheckResult(
+                check_name=name,
+                title=getattr(check_class, "title", name),
+                description=getattr(check_class, "description", ""),
+                severity="INFO",
+                passed=False,
+                findings=[{
+                    "message": f"Erreur lors de l'exécution : {e}",
+                    "severity": "INFO", "evidence": str(e)[:200],
+                    "url": "", "confidence": "confirmed",
+                }],
+            ), STATUS_ERROR)

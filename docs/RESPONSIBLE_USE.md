@@ -16,7 +16,25 @@ target, what stays your responsibility, and where the legal lines are. It is not
   environment and configuration files, `.git/`, debug logs, plugin and theme slugs. It is still
   read-only, but guessing paths is reconnaissance that a site owner did not invite.
 - Each audit has a request budget, and requests carry a user agent that names the tool and links to
-  this repository, so the site owner can identify the traffic.
+  this repository, so the site owner can identify the traffic. Visitor profiles are the exception:
+  about 25 requests on the home page and at most two pages it links present a browser, one of them
+  with an invalid WordPress login cookie, because injections hide from tools and from logged-in
+  users. The cookie opens no session.
+
+## The browser pass (`--render`)
+
+- It runs the site's JavaScript, including malicious code if the site is infected, inside Chromium's
+  sandbox. Run it from a disposable virtual machine or container with no credentials and no mounted
+  folders, not from your everyday workstation.
+- Inside the browser the same rules apply: only `GET`, `HEAD` and `OPTIONS` leave; other methods,
+  blockchain RPC nodes and explorers, navigation to another site, WebSockets, downloads, pop-ups and
+  private addresses are blocked and recorded. Writes to the clipboard are captured and cancelled.
+- It loads third-party hosts the page asks for, as a visitor's browser would, unless you set
+  `render_third_party: false`.
+- It hides `navigator.webdriver` and the "HeadlessChrome" user agent, because ClearFake serves a clean
+  page to automated browsers. This evades the malware's checks, not the site's protections.
+- When a page shows a fake CAPTCHA, it clicks the verification box once, to see what the page puts on
+  the clipboard. It never clicks anything else.
 
 ## Your responsibility
 
@@ -50,6 +68,12 @@ exposure of a site; penetration testing belongs to other tools and to signed eng
 - Par défaut, il ne demande que la page d'accueil, ses ressources et les points d'entrée publics de
   WordPress. `--authorized` ajoute la recherche de chemins non liés, à réserver à un audit sous mandat
   écrit.
+- Les profils de visite se présentent comme un navigateur, sur l'accueil et au plus deux pages qu'il
+  lie, dont un avec un cookie de connexion WordPress invalide, qui n'ouvre aucune session.
+- `--render` exécute le JavaScript du site, code malveillant compris, dans le bac à sable de Chromium :
+  à lancer depuis une machine virtuelle ou un conteneur jetable. Seules les lectures partent ; appels
+  de blockchain, navigation vers un autre site, WebSocket et téléchargements sont bloqués, le
+  presse-papiers est intercepté. Seule la case d'un faux CAPTCHA est cliquée, une fois.
 - Auditer sans droit un système relève de l'article 323-1 du Code pénal ; mettre à disposition un outil
   conçu pour cela « sans motif légitime » relève de l'article 323-3-1. La lecture seule réduit le risque,
   elle ne remplace pas une autorisation.

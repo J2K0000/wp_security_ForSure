@@ -37,6 +37,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "responses>=0.25,<1"]
+# Passe de rendu facultative (--render) : puis python -m playwright install chromium
+render = ["playwright>=1.49,<2"]
 
 [project.scripts]
 wp-security-forsure = "wp_security_forsure.__main__:main"
@@ -50,9 +52,12 @@ Security = "https://github.com/J2K0000/wp_security_ForSure/security/policy"
 include = ["wp_security_forsure*"]
 
 [tool.setuptools.package-data]
-wp_security_forsure = ["config.yaml"]
+wp_security_forsure = ["config.yaml", "signatures/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-p no:cacheprovider"
+markers = [
+    "render: lance Chromium (Playwright) ; ignoré si Playwright ou Chromium manque",
+]

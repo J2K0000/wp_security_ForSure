@@ -48,7 +48,8 @@ INCIDENT_WARNING = (
     "réinstallent depuis plusieurs emplacements.")
 
 COMPROMISE_CHECKS = frozenset({"malware_detection", "cloaking_seo_spam",
-                               "nulled_plugins"})
+                               "nulled_plugins", "visit_profiles",
+                               "client_injection", "browser_render"})
 _SEVERE = frozenset({"HIGH", "CRITICAL"})
 # Contenu injecté (participe), pas une classe de vulnérabilité (« injection »).
 _INJECTED = re.compile(r"\binject(?:é|ée|és|ées|e|ee|es|ees|ed|ing)\b", re.I)
@@ -64,9 +65,12 @@ AUDIT_LIMITS_LEAD = ("Audit externe en lecture seule : ces points échappent à 
 AUDIT_LIMITS = (
     "Un site déjà compromis : code logé dans le functions.php du thème, les "
     "mu-plugins, les drop-ins, la base de données ou les tâches planifiées.",
-    "Les injections servies seulement à certains visiteurs, selon l'agent "
-    "utilisateur (UA), le Referer ou l'état de connexion. Cette version "
-    "n'exécute pas le JavaScript des pages.",
+    "Les injections servies seulement à certains visiteurs ne sont vues "
+    "qu'en partie. L'audit compare plusieurs profils de visite (Referer, "
+    "mobile, langue, cookie de connexion, seconde visite) et n'exécute le "
+    "JavaScript qu'avec l'option --render. Il ne voit pas le cloaking qui "
+    "vérifie l'adresse IP de Googlebot, ni le ciblage par pays ou par adresse "
+    "IP : toutes les visites partent de la même adresse.",
     "Les versions masquées : un composant dont la version n'est pas publiée "
     "échappe à la comparaison avec les vulnérabilités connues.",
     "Ce qui se trouve derrière une authentification.",
