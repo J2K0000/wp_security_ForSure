@@ -7,6 +7,22 @@ risky configuration, injected scripts.
 
 [Version française](README.fr.md) · Status: alpha (0.1.0) · License: Apache-2.0
 
+## Who it is for, and what it is not
+
+- **For site owners** and the people they mandate (agencies, freelancers, hosts): run it on your own
+  WordPress site to see what an outside attacker can learn and which known flaws apply to it.
+- **Not an attack tool.** It does not try to break in, does not exploit the vulnerabilities it
+  reports, and is not meant for sites you have no right to audit.
+- **Its main limit: active attacks are not tested.** Attackers brute-force logins, replay leaked
+  passwords, exploit vulnerable plugins, upload files and inject code. Testing those means attacking,
+  which this tool refuses to do, even as an option. It reports what makes them possible (an exposed
+  login page and XML-RPC, enumerable accounts, vulnerable versions) and tells you what to check
+  yourself: two-factor authentication on every administrator, a limit on login attempts, a web
+  application firewall, updates, deleting unused plugins. Resistance to active attacks is measured
+  by a penetration test under a signed contract.
+- [docs/COVERAGE.md](docs/COVERAGE.md) maps WordPress and PHP vulnerability classes one by one:
+  tested, partly tested, invisible from outside, or active only.
+
 ## Why another scanner
 
 Most WordPress scanners mix discovery with attack: they post forms, try passwords, send injection
@@ -97,11 +113,12 @@ what an attacker gains:
   (wp2shell), plugin REST routes that accept a user URL, nulled plugins, notable plugin attack surface,
   login exposure and user enumeration, WordPress features (XML-RPC, oEmbed, application passwords),
   exposed files and database dumps (with `--authorized`, a readable `.user.ini` whose
-  `auto_prepend_file` points to an unknown file), signs of injected code, cloaking and SEO spam, open
+  `auto_prepend_file` points to an unknown file, and an open `wp-admin/setup-config.php`), signs of injected code, cloaking and SEO spam, open
   comments on an article.
 - Data exposure: REST API content and users, cookies and sessions, third-party scripts,
   TLS configuration, email authentication (SPF, DKIM, DMARC), webhook receivers.
-- Hardening: security headers, server configuration, WAF and CDN detection (a CAPTCHA alone is not
+- Hardening: an end-of-life PHP branch (from `X-Powered-By`, against php.net's support cycle), PHP errors
+  displayed in pages, security headers, server configuration, WAF and CDN detection (a CAPTCHA alone is not
   read as a WAF: a fake one would pass for a protection), subdomain takeover,
   cache plugins, multisite.
 
@@ -109,6 +126,8 @@ what an attacker gains:
 
 A black-box, read-only audit has limits. The report states them instead of reporting "clean".
 
+- **Active attacks** (brute force, leaked password reuse, exploitation, uploads, injection): see
+  "Who it is for, and what it is not" above.
 - **A site that is already compromised.** A backdoor in a theme's `functions.php`, a must-use plugin,
   a drop-in, the database or a scheduled task is invisible from outside. Answering "am I already
   hacked?" needs server access: `wp core verify-checksums`, `wp plugin verify-checksums`, a review of

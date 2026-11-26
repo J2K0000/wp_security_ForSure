@@ -10,7 +10,8 @@ Structure orientée client :
 import html
 from datetime import datetime, timezone
 from . import BaseReporter
-from .guidance import (RECOMMENDATIONS_TITLE, audit_limits_block, incident_block,
+from .guidance import (RECOMMENDATIONS_SUBTITLE, RECOMMENDATIONS_TITLE,
+                       audit_limits_block, incident_block,
                        recommendations_block)
 from .impact import exposure_surface, narrative, harvest_example
 from ..access_tiers import AUTHORIZED_WARNING, access_level
@@ -349,12 +350,12 @@ def _incident_card(block: dict) -> str:
 
 
 def _guidance_annex(incident: dict, incident_card: str) -> str:
-    """Annexes communes : recommandation 2FA, réponse à incident quand elle
+    """Annexes communes : recommandations permanentes, réponse à incident quand elle
     n'est pas en tête, « Ce que cet audit ne peut pas voir »."""
     recs = "".join(
         f"<div class='card'><p><strong>{html.escape(r['title'])}</strong></p>"
         f"<p>{html.escape(r['text'])}</p></div>" for r in recommendations_block())
-    out = _sec("shield", RECOMMENDATIONS_TITLE, "Comptes administrateurs") + recs
+    out = _sec("shield", RECOMMENDATIONS_TITLE, RECOMMENDATIONS_SUBTITLE) + recs
     if not incident["highlighted"]:
         out += _sec("alert", "Annexe", html.escape(incident["title"])) + incident_card
     limits = audit_limits_block()

@@ -62,7 +62,7 @@ _DEFAULT_PRIORITY = {
         "third_party_scripts", "ssl_tls", "email_auth"), 2),
     **dict.fromkeys((
         "security_headers", "server_security", "waf_cdn", "takeover",
-        "cache_security", "multisite"), 3),
+        "cache_security", "multisite", "php_runtime"), 3),
 }
 
 

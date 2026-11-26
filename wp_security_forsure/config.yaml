@@ -99,4 +99,5 @@ checks:
   - waf_cdn
   - takeover  # subdomain/subresource takeover (DNS dangling + fingerprints)
   - cache_security
+  - php_runtime  # branche PHP (fin de vie, php.net) et erreurs PHP affichées
   - multisite  # Activé seulement si détecté

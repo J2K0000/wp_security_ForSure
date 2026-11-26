@@ -207,3 +207,21 @@ def test_terminal_limits_and_2fa_present():
         assert "Transparency Report" in out
         assert "double authentification sur chaque compte administrateur" in out.lower()
         assert "ne se voit pas de l'extérieur" in out
+
+
+def test_active_attacks_limit_and_owner_checks_in_every_report():
+    """La limite principale (attaques actives non rejouées) et ce que le
+    propriétaire doit vérifier lui-même figurent dans les trois rapports."""
+    assert guidance.AUDIT_LIMITS[0].startswith("Les attaques actives ne sont pas rejouées")
+    ids = [r["id"] for r in guidance.recommendations_block()]
+    assert ids == ["2fa_admins", "login_limits", "remove_unused", "server_side"]
+    for results in (_clean(), _infected()):
+        term = " ".join(_terminal(results).split())
+        html_out = _html(results)
+        data = _json(results)
+        for text in (term, html_out):
+            assert "attaques actives ne sont pas rejouées" in text
+            assert "Limiter les tentatives de connexion" in text
+            assert "DISALLOW_FILE_EDIT" in text
+        assert data["audit_limits"]["items"][0].startswith("Les attaques actives")
+        assert [r["id"] for r in data["recommendations"]] == ids

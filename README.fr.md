@@ -7,6 +7,24 @@ vulnérabilités connues, fichiers qui fuient, configuration risquée, scripts i
 
 [English version](README.md) · Statut : alpha (0.1.0) · Licence : Apache-2.0
 
+## À qui il sert, ce qu'il n'est pas
+
+- **Pour les propriétaires de sites** et ceux qu'ils mandatent (agences, indépendants, hébergeurs) :
+  lancez-le sur votre propre site WordPress pour voir ce qu'un attaquant extérieur peut apprendre et
+  quelles failles connues le concernent.
+- **Ce n'est pas un outil d'attaque.** Il n'essaie pas d'entrer, n'exploite pas les failles qu'il
+  signale et n'est pas fait pour un site que vous n'avez pas le droit d'auditer.
+- **Sa limite principale : les attaques actives ne sont pas testées.** Les pirates tentent la force
+  brute sur la connexion, réutilisent des mots de passe divulgués, exploitent des extensions
+  vulnérables, téléversent des fichiers et injectent du code. Les tester, c'est attaquer, ce que cet
+  outil refuse de faire, même en option. Il signale ce qui les rend possibles (page de connexion et
+  XML-RPC exposés, comptes énumérables, versions vulnérables) et dit ce qu'il vous reste à vérifier :
+  double authentification sur chaque administrateur, limitation des tentatives de connexion, pare-feu
+  applicatif, mises à jour, suppression des extensions inutilisées. La résistance aux attaques
+  actives se mesure par un test d'intrusion sous contrat.
+- [docs/COUVERTURE.md](docs/COUVERTURE.md) passe en revue les classes de failles WordPress et PHP une
+  par une : testée, testée en partie, invisible de l'extérieur, ou active seulement.
+
 ## Pourquoi un scanner de plus
 
 La plupart des scanners WordPress mêlent la reconnaissance et l'attaque : ils soumettent des
@@ -101,10 +119,12 @@ regroupés selon ce qu'un attaquant y gagne :
   d'attaque des plugins courants, exposition de la connexion et énumération d'utilisateurs, fonctions
   WordPress (XML-RPC, oEmbed, mots de passe d'application), fichiers et dumps exposés, traces de code
   injecté, cloaking et spam SEO, commentaires ouverts sur un article, et avec `--authorized` un
-  `.user.ini` lisible dont `auto_prepend_file` désigne un fichier inconnu.
+  `.user.ini` lisible dont `auto_prepend_file` désigne un fichier inconnu ou un
+  `wp-admin/setup-config.php` resté ouvert.
 - Exposition de données : contenus et utilisateurs de l'API REST, cookies et sessions, scripts
   tiers, configuration TLS, authentification des e-mails (SPF, DKIM, DMARC), récepteurs de webhooks.
-- Durcissement : en-têtes de sécurité, configuration serveur, détection de WAF et de CDN (un CAPTCHA
+- Durcissement : branche PHP en fin de vie (d'après `X-Powered-By`, comparée au cycle de support de
+  php.net), erreurs PHP affichées dans les pages, en-têtes de sécurité, configuration serveur, détection de WAF et de CDN (un CAPTCHA
   seul n'est pas lu comme un WAF : un faux passerait pour une protection), prise de
   contrôle de sous-domaine, plugins de cache, multisite.
 
@@ -113,6 +133,8 @@ regroupés selon ce qu'un attaquant y gagne :
 Un audit en boîte noire et en lecture seule a des limites. Le rapport les dit au lieu d'afficher
 « propre ».
 
+- **Les attaques actives** (force brute, réutilisation de mots de passe divulgués, exploitation,
+  téléversement, injection) : voir « À qui il sert, ce qu'il n'est pas » plus haut.
 - **Un site déjà compromis.** Une porte dérobée dans le `functions.php` d'un thème, un mu-plugin, un
   drop-in, la base de données ou une tâche planifiée est invisible de l'extérieur. Répondre à « suis-je
   déjà piraté ? » demande un accès serveur : `wp core verify-checksums`, `wp plugin verify-checksums`,

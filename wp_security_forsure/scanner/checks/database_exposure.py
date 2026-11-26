@@ -160,11 +160,13 @@ class DatabaseExposureCheck(BaseCheck):
             self._check_phpmyadmin()
             self._check_wp_config_sample()
             self._check_install_php()
+            self._check_setup_config()
             self._check_env_files()
         else:
             self.note_unlinked_skipped(
                 "dumps SQL, dossiers de sauvegarde, phpMyAdmin et Adminer, "
-                "wp-config-sample.php, wp-admin/install.php, fichiers .env")
+                "wp-config-sample.php, wp-admin/install.php, "
+                "wp-admin/setup-config.php, fichiers .env")
         self._check_table_prefix()
         self._check_db_error_disclosure()
         return self._result
@@ -413,6 +415,44 @@ class DatabaseExposureCheck(BaseCheck):
                 url=url,
                 confidence="potential",
             )
+
+    # ── 5bis) wp-admin/setup-config.php (assistant de configuration) ────
+
+    # Marqueurs du formulaire de l'assistant, indépendants de la langue :
+    # lien ou action vers l'étape suivante, champs de connexion à la base.
+    _SETUP_FORM_MARKERS = ("setup-config.php?step=1", "setup-config.php?step=2",
+                           'name="dbname"', 'name="uname"', 'name="dbhost"')
+
+    def _check_setup_config(self) -> None:
+        """wp-admin/setup-config.php ouvert : sans wp-config.php, n'importe qui
+        peut relier le site à sa propre base de données puis l'installer.
+        WordPress affiche ce formulaire tant que wp-config.php n'existe pas ;
+        le GET ne fait qu'afficher l'étape 0 (choix de la langue)."""
+        path = "wp-admin/setup-config.php"
+        _, body, status, content_type = self._head_then_get(path)
+        if body is None or status != 200:
+            return
+        url = f"{self.target.rstrip('/')}/{path}"
+        low = body.lower()
+        markers = [m for m in self._SETUP_FORM_MARKERS if m in low]
+        if markers:
+            self._result.add_finding(
+                message=("wp-admin/setup-config.php ouvert : l'assistant de "
+                         "configuration accepte une nouvelle base de données"),
+                severity="CRITICAL",
+                evidence=(f"HTTP {status}, marqueurs du formulaire : "
+                          f"{', '.join(markers)}. Sans wp-config.php, un visiteur "
+                          "peut connecter le site à sa propre base puis créer le "
+                          "compte administrateur. Wordfence relève des attaques qui "
+                          "suppriment wp-config.php pour rouvrir cette étape. "
+                          "Restaurer wp-config.php ou retirer l'installation."),
+                url=url, confidence="confirmed")
+        elif "wp-config.php" in low:
+            self._result.add_finding(
+                message="wp-admin/setup-config.php verrouillé (wp-config.php existe)",
+                severity="INFO",
+                evidence=f"HTTP {status} : message de configuration déjà faite.",
+                url=url, confidence="confirmed")
 
     # ── 5) wp-admin/install.php (installation lock check) ──────────────
 

@@ -63,6 +63,12 @@ AUDIT_LIMITS_LEAD = ("Audit externe en lecture seule : ces points échappent à 
                      "toute observation de l'extérieur. L'absence de constat "
                      "ne les couvre pas.")
 AUDIT_LIMITS = (
+    "Les attaques actives ne sont pas rejouées : force brute sur la "
+    "connexion, réutilisation de mots de passe divulgués, exploitation d'une "
+    "faille, téléversement de fichier, injection de code. L'audit montre ce "
+    "qui les rend possibles (connexion et XML-RPC exposés, comptes "
+    "énumérables, versions vulnérables) ; la résistance du site se vérifie par "
+    "un test d'intrusion sous contrat.",
     "Un site déjà compromis : code logé dans le functions.php du thème, les "
     "mu-plugins, les drop-ins, la base de données ou les tâches planifiées.",
     "Les injections servies seulement à certains visiteurs ne sont vues "
@@ -83,6 +89,7 @@ AUDIT_LIMITS = (
 # ── Recommandations permanentes ──────────────────────────────────────────
 
 RECOMMENDATIONS_TITLE = "Recommandation permanente"
+RECOMMENDATIONS_SUBTITLE = "À vérifier par le propriétaire"
 RECOMMENDATIONS = (
     {
         "id": "2fa_admins",
@@ -91,6 +98,34 @@ RECOMMENDATIONS = (
             "Son activation, compte par compte, ne se voit pas de "
             "l'extérieur : une extension 2FA détectée ne prouve pas que chaque "
             "administrateur l'utilise. À vérifier dans l'administration."),
+    },
+    {
+        "id": "login_limits",
+        "title": "Limiter les tentatives de connexion",
+        "text": (
+            "La force brute vise wp-login.php et xmlrpc.php. L'audit ne "
+            "l'essaie pas : vérifier qu'une limitation des tentatives, un pare-"
+            "feu applicatif ou la désactivation de XML-RPC (s'il ne sert pas) "
+            "est en place."),
+    },
+    {
+        "id": "remove_unused",
+        "title": "Supprimer ce qui ne sert pas",
+        "text": (
+            "Une extension ou un thème désactivé reste exploitable tant que "
+            "ses fichiers sont sur le serveur : supprimer ce qui ne sert pas, "
+            "mettre à jour le reste, et ne garder ni compte « admin » ni compte "
+            "de test."),
+    },
+    {
+        "id": "server_side",
+        "title": "Durcir côté serveur",
+        "text": (
+            "Invisible de l'extérieur : interdire l'éditeur de fichiers de "
+            "l'administration (DISALLOW_FILE_EDIT), interdire l'exécution de "
+            "PHP dans wp-content/uploads/, tenir PHP sur une version encore "
+            "supportée, garder une sauvegarde hors du serveur et l'avoir "
+            "restaurée une fois."),
     },
 )
 

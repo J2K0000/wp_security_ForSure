@@ -65,6 +65,7 @@ _CLASS_BY_CHECK = {
     "ssl_tls": "recon",
     "email_auth": "pii",  # surface d'usurpation email / phishing
     "server_security": "recon",
+    "php_runtime": "recon",
     "waf_cdn": "recon",
     "multisite": "recon",
     "fingerprint": "recon",
