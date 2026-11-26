@@ -420,9 +420,10 @@ class DatabaseExposureCheck(BaseCheck):
 
     # Marqueurs des écrans de l'assistant, indépendants de la langue, relevés
     # dans wp-admin/setup-config.php (dépôt wordpress-develop) : formulaire de
-    # choix de la langue (action « ?step=0 »), lien vers l'étape 1, formulaire
-    # de la base (action « setup-config.php?step=2 », champs dbname, uname,
-    # dbhost). Quand wp-config.php existe, WordPress répond 409.
+    # choix de la langue (action « ?step=0 »), accueil de l'étape 0 (lien vers
+    # l'étape 1), formulaire de la base à l'étape 1 (action
+    # « setup-config.php?step=2 », champs dbname, uname, dbhost). Quand
+    # wp-config.php existe, WordPress répond 409.
     _SETUP_FORM_MARKERS = ('action="?step=0"', "setup-config.php?step=1",
                            "setup-config.php?step=2", 'name="dbname"',
                            'name="uname"', 'name="dbhost"')

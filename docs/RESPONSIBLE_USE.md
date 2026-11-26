@@ -11,7 +11,9 @@ target, what stays your responsibility, and where the legal lines are. It is not
 - It never requests a guessed `.php` file under `wp-content/` or a presumed web shell, because a `GET`
   would execute it on the server, and it never calls `wp-cron.php` or a Site Health diagnostic.
   With `--authorized`, a few guessed files at the root (`info.php`, `phpinfo.php`, `test.php`,
-  `adminer.php`...) are requested to spot an exposed `phpinfo()` or database tool; a request runs them.
+  `adminer.php`...) are requested to spot an exposed `phpinfo()` or database tool, and three core files
+  (`wp-admin/install.php`, `wp-admin/setup-config.php`, `wp-config-sample.php`) to check that installation
+  is closed; a request runs them.
 - By default (level 0 and 1) it only requests the home page, the resources that page references, and
   the standard public endpoints any WordPress client uses.
 - With `--authorized` (level 2) it also checks whether well-known unlinked paths exist: backups,
@@ -71,8 +73,9 @@ exposure of a site; penetration testing belongs to other tools and to signed eng
 - L'outil n'envoie que des requêtes `GET`, `HEAD` et `OPTIONS`, ne demande jamais un `.php` deviné sous
   `wp-content/` ni un webshell présumé, et n'appelle jamais `wp-cron.php` ni un diagnostic Site Health.
   Avec `--authorized`, quelques fichiers devinés à la racine (`info.php`, `phpinfo.php`, `test.php`,
-  `adminer.php`...) sont demandés pour repérer un `phpinfo()` ou un outil de base exposé ; la requête les
-  exécute.
+  `adminer.php`...) sont demandés pour repérer un `phpinfo()` ou un outil de base exposé, et trois fichiers
+  du cœur (`wp-admin/install.php`, `wp-admin/setup-config.php`, `wp-config-sample.php`) pour vérifier que
+  l'installation est fermée ; la requête les exécute.
 - Par défaut, il ne demande que la page d'accueil, ses ressources et les points d'entrée publics de
   WordPress. `--authorized` ajoute la recherche de chemins non liés, à réserver à un audit sous mandat
   écrit.
