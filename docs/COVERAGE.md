@@ -8,8 +8,8 @@ site, read-only. It replays no attack: see "Who it is for, and what it is not" i
 
 Snapshot of 24 November 2026, built from the sources listed at the bottom. 50 classes in total:
 
-- **tested** (15): the tool reports a finding when the flaw shows from outside;
-- **partly tested** (11): only part of it shows, the check needs `--authorized`, the tool only sees clues,
+- **tested** (11): the tool reports a finding when the flaw shows from outside, with no option;
+- **partly tested** (15): only part of it shows, the check needs `--authorized`, the tool only sees clues,
   or it abstains by design (C11);
 - **invisible from outside** (10): they need server or admin access. A read-only server mode is planned;
 - **active only** (14): testing them means attacking. The tool does not; it reports what makes them
@@ -17,6 +17,9 @@ Snapshot of 24 November 2026, built from the sources listed at the bottom. 50 cl
 
 `--authorized` marks a check that guesses unlinked paths: only use it on a site you have written permission
 to audit.
+
+"Tested" means the tool looks for that signal: an audit without findings does not prove the flaw is
+absent. The map only holds the classes that the sources below name.
 
 ## Tested
 
@@ -27,21 +30,21 @@ to audit.
 | C03 | Abandoned or closed plugins | wordpress.org directory status (closed, no update for 2 years), maintenance tools left in production: `plugin_status` | Replace the plugin | PS-2026, PS-2025, WF-2024, OWASP A03 |
 | C04 | End-of-life PHP branch | `X-Powered-By` version compared with php.net's support cycle: `php_runtime` | Move to a supported branch | PHP-SV, PHP-EOL, OWASP A03 |
 | C07 | Displayed PHP errors, path disclosure | PHP and database errors printed in the pages read: `php_runtime`, `database_exposure` | `display_errors` off, `WP_DEBUG_DISPLAY` false | WP-ERR, OWASP A02, A10 |
-| C08 | Sensitive files served | `wp-config.php` copies, `debug.log`, `.env`, `.git/`, SQL dumps, `.user.ini`: `file_exposure`, `database_exposure` (`--authorized`) | Remove them from the web root | OWASP A01, A09, WF-2024, WP-H |
-| C10 | Installation or setup left open | `wp-admin/install.php` and `wp-admin/setup-config.php`: `database_exposure` (`--authorized`) | No installation leftovers | WF-2024 |
 | C12 | Sample files left online | `readme.html`, `license.txt`: `file_exposure` | Remove what is unused | OWASP A02, WF-2024 |
 | C13 | Missing security headers | CSP, HSTS, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`...: `security_headers` | Send them from the server or CDN | OWASP A02, A06 |
 | C15 | Cookies without Secure, HttpOnly or SameSite | Attributes of cookies set by public pages: `cookies_sessions` | HTTPS and `FORCE_SSL_ADMIN` | OWASP A02, A01, WP-CONN |
-| C16 | Missing or incomplete HTTPS | Certificate, protocols, redirect, HSTS: `ssl_tls` | Valid certificate, redirect, HSTS | OWASP A04, WP-HTTPS |
+| C16 | Missing or incomplete HTTPS | Certificate, protocols and cipher suites (when `openssl` is installed, otherwise a partial audit is reported), HSTS: `ssl_tls`; HTTP to HTTPS redirect of the login page: `brute_force_login` | Valid certificate, redirect, HSTS | OWASP A04, WP-HTTPS |
 | C17 | Technical information disclosure | `Server` and `X-Powered-By` headers, published versions: `server_security`, `fingerprint` | Hide them, as a complement only | OWASP A01, WF-2024, CWE |
-| C19 | Account enumeration, "admin" username | Author archives, REST users API, oEmbed, author sitemap; risky names (`admin`, `test`, the site's name): `rest_api`, `wp_features`, `brute_force_login` | No `admin` username, no test account | OWASP A07, WP-H, WP-BF |
-| C20 | Application passwords open without need | Announced in the REST API index: `rest_api`, `wp_features` | Turn them off if unused | WP-AP |
-| C50 | Already compromised site (spam, redirects, injected scripts) | Injected code, SEO spam, cloaking, ClickFix fake CAPTCHA, EtherHiding loaders, compared visitor profiles, Chromium pass with `--render`, unknown `auto_prepend_file` in `.user.ini` (`--authorized`): `malware_detection`, `cloaking_seo_spam`, `visit_profiles`, `client_injection`, `browser_render`, `file_exposure` | Server-side integrity check, backups | PS-2025, PS-2026, WP-H, WF-2024 |
+| C19 | Account enumeration, "admin" username | Author archives, REST users API, oEmbed, author sitemap; risky names (`admin`, `test`, the site's name): `rest_api`, `brute_force_login` | No `admin` username, no test account | OWASP A07, WP-H, WP-BF |
 
 ## Partly tested
 
 | # | Class | What the tool sees, and what escapes it | What you check | Sources |
 |---|---|---|---|---|
+| C08 | Sensitive files served | With `--authorized` only: `wp-config.php` copies, `debug.log`, `.env`, `.git/`, SQL dumps, `.user.ini`, exposed `phpinfo()`, phpMyAdmin and Adminer: `file_exposure`, `database_exposure`. To spot a `phpinfo()` or a database tool, a few guessed PHP files at the root are requested (`info.php`, `phpinfo.php`, `test.php`, `adminer.php`...): a HEAD or GET runs them | Remove them from the web root | OWASP A01, A09, WF-2024, WP-H |
+| C10 | Installation or setup left open | With `--authorized` only: `wp-admin/install.php` and every screen of `wp-admin/setup-config.php` (language choice, step 1, database form): `database_exposure` | No installation leftovers | WF-2024 |
+| C20 | Application passwords open without need | The application passwords endpoint is queried without authentication and must refuse: `rest_api`, `wp_features`. Whether the feature is needed cannot be seen | Turn them off if unused | WP-AP |
+| C50 | Already compromised site (spam, redirects, injected scripts) | What the site serves: injected code, SEO spam, cloaking, ClickFix fake CAPTCHA, EtherHiding loaders, compared visitor profiles, Chromium pass with `--render`, unknown `auto_prepend_file` in `.user.ini` (`--authorized`): `malware_detection`, `cloaking_seo_spam`, `visit_profiles`, `client_injection`, `browser_render`, `file_exposure`. An infection that does not show, or that sorts its visitors, escapes the audit | Server-side integrity check, backups | PS-2025, PS-2026, WP-H, WF-2024 |
 | C05 | Outdated server software | A version in the `Server` header is reported as disclosed, but its age is not judged: `server_security` | A host that maintains its versions | WP-H, OWASP A03 |
 | C06 | Components from untrusted sources | Third-party scripts without `integrity`, scripts from suspicious domains, nulled plugins (`--authorized`): `third_party_scripts`, `nulled_plugins`. A backdoor inside a plugin stays invisible | Components from wordpress.org or known vendors | OWASP A03, A08, WP-H, PS-2026 |
 | C09 | Directory listing | Index pages of `wp-content/`, `uploads/` and similar, only with `--authorized`: `file_exposure`, `server_security` | Listing turned off on the server | OWASP A01, A02 |

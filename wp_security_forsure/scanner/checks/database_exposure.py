@@ -418,10 +418,14 @@ class DatabaseExposureCheck(BaseCheck):
 
     # ── 5bis) wp-admin/setup-config.php (assistant de configuration) ────
 
-    # Marqueurs du formulaire de l'assistant, indépendants de la langue :
-    # lien ou action vers l'étape suivante, champs de connexion à la base.
-    _SETUP_FORM_MARKERS = ("setup-config.php?step=1", "setup-config.php?step=2",
-                           'name="dbname"', 'name="uname"', 'name="dbhost"')
+    # Marqueurs des écrans de l'assistant, indépendants de la langue, relevés
+    # dans wp-admin/setup-config.php (dépôt wordpress-develop) : formulaire de
+    # choix de la langue (action « ?step=0 »), lien vers l'étape 1, formulaire
+    # de la base (action « setup-config.php?step=2 », champs dbname, uname,
+    # dbhost). Quand wp-config.php existe, WordPress répond 409.
+    _SETUP_FORM_MARKERS = ('action="?step=0"', "setup-config.php?step=1",
+                           "setup-config.php?step=2", 'name="dbname"',
+                           'name="uname"', 'name="dbhost"')
 
     def _check_setup_config(self) -> None:
         """wp-admin/setup-config.php ouvert : sans wp-config.php, n'importe qui
@@ -430,12 +434,12 @@ class DatabaseExposureCheck(BaseCheck):
         le GET ne fait qu'afficher l'étape 0 (choix de la langue)."""
         path = "wp-admin/setup-config.php"
         _, body, status, content_type = self._head_then_get(path)
-        if body is None or status != 200:
+        if body is None:
             return
         url = f"{self.target.rstrip('/')}/{path}"
         low = body.lower()
         markers = [m for m in self._SETUP_FORM_MARKERS if m in low]
-        if markers:
+        if status == 200 and markers:
             self._result.add_finding(
                 message=("wp-admin/setup-config.php ouvert : l'assistant de "
                          "configuration accepte une nouvelle base de données"),
@@ -447,7 +451,7 @@ class DatabaseExposureCheck(BaseCheck):
                           "suppriment wp-config.php pour rouvrir cette étape. "
                           "Restaurer wp-config.php ou retirer l'installation."),
                 url=url, confidence="confirmed")
-        elif "wp-config.php" in low:
+        elif status in (200, 409) and "wp-config.php" in low:
             self._result.add_finding(
                 message="wp-admin/setup-config.php verrouillé (wp-config.php existe)",
                 severity="INFO",

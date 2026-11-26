@@ -9,8 +9,8 @@ pas » dans le [README](../README.fr.md).
 
 Relevé du 24 novembre 2026, sur les sources listées en bas de page. 50 classes au total :
 
-- **testées** (15) : l'outil émet un constat quand la faille se voit de l'extérieur ;
-- **testées en partie** (11) : une partie seulement se voit, le contrôle demande `--authorized`, l'outil ne
+- **testées** (11) : l'outil émet un constat quand la faille se voit de l'extérieur, sans option ;
+- **testées en partie** (15) : une partie seulement se voit, le contrôle demande `--authorized`, l'outil ne
   relève que des indices, ou il s'abstient par choix (C11) ;
 - **invisibles de l'extérieur** (10) : il faut un accès au serveur ou à l'administration. Un mode serveur
   en lecture seule est prévu ;
@@ -19,6 +19,9 @@ Relevé du 24 novembre 2026, sur les sources listées en bas de page. 50 classes
 
 `--authorized` marque un contrôle qui devine des chemins non liés : à réserver à un site dont vous avez
 l'autorisation écrite.
+
+« Testée » veut dire que l'outil cherche ce signal : un audit sans constat ne prouve pas que la faille est
+absente. La carte ne contient que les classes que les sources ci-dessous nomment.
 
 ## Testées
 
@@ -29,21 +32,21 @@ l'autorisation écrite.
 | C03 | Extensions abandonnées ou fermées | Statut au dépôt wordpress.org (fermée, sans mise à jour depuis 2 ans), outils de maintenance laissés en production : `plugin_status` | Remplacer l'extension | PS-2026, PS-2025, WF-2024, OWASP A03 |
 | C04 | Branche PHP en fin de vie | Version de `X-Powered-By` comparée au cycle de support de php.net : `php_runtime` | Passer sur une branche supportée | PHP-SV, PHP-EOL, OWASP A03 |
 | C07 | Erreurs PHP affichées, chemins divulgués | Erreurs PHP et erreurs de base de données imprimées dans les pages lues : `php_runtime`, `database_exposure` | `display_errors` désactivé, `WP_DEBUG_DISPLAY` à false | WP-ERR, OWASP A02, A10 |
-| C08 | Fichiers sensibles servis | Copies de `wp-config.php`, `debug.log`, `.env`, `.git/`, dumps SQL, `.user.ini` : `file_exposure`, `database_exposure` (`--authorized`) | Retirer ces fichiers de la racine web | OWASP A01, A09, WF-2024, WP-H |
-| C10 | Installation ou configuration restée ouverte | `wp-admin/install.php` et `wp-admin/setup-config.php` : `database_exposure` (`--authorized`) | Aucun reste d'installation | WF-2024 |
 | C12 | Fichiers d'exemple laissés en ligne | `readme.html`, `license.txt` : `file_exposure` | Retirer ce qui ne sert pas | OWASP A02, WF-2024 |
 | C13 | En-têtes de sécurité absents | CSP, HSTS, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`... : `security_headers` | Les envoyer depuis le serveur ou le CDN | OWASP A02, A06 |
 | C15 | Cookies sans Secure, HttpOnly ou SameSite | Attributs des cookies des pages publiques : `cookies_sessions` | HTTPS et `FORCE_SSL_ADMIN` | OWASP A02, A01, WP-CONN |
-| C16 | HTTPS absent ou incomplet | Certificat, protocoles, redirection, HSTS : `ssl_tls` | Certificat valide, redirection, HSTS | OWASP A04, WP-HTTPS |
+| C16 | HTTPS absent ou incomplet | Certificat, protocoles et suites (si `openssl` est installé, sinon audit partiel signalé), HSTS : `ssl_tls` ; redirection HTTP vers HTTPS de la page de connexion : `brute_force_login` | Certificat valide, redirection, HSTS | OWASP A04, WP-HTTPS |
 | C17 | Divulgation d'informations techniques | En-têtes `Server` et `X-Powered-By`, versions publiées : `server_security`, `fingerprint` | Masquer, en appoint seulement | OWASP A01, WF-2024, CWE |
-| C19 | Énumération des comptes, identifiant « admin » | Archives d'auteur, API REST des utilisateurs, oEmbed, sitemap des auteurs ; noms à risque (`admin`, `test`, nom du site) : `rest_api`, `wp_features`, `brute_force_login` | Pas d'identifiant `admin` ni de compte de test | OWASP A07, WP-H, WP-BF |
-| C20 | Mots de passe d'application ouverts sans besoin | Annonce dans l'index de l'API REST : `rest_api`, `wp_features` | Les désactiver s'ils ne servent pas | WP-AP |
-| C50 | Site déjà compromis (spam, redirections, scripts injectés) | Code injecté, spam SEO, cloaking, faux CAPTCHA ClickFix, chargeurs EtherHiding, profils de visite comparés, passe Chromium avec `--render`, `auto_prepend_file` inconnu dans `.user.ini` (`--authorized`) : `malware_detection`, `cloaking_seo_spam`, `visit_profiles`, `client_injection`, `browser_render`, `file_exposure` | Contrôle d'intégrité côté serveur, sauvegardes | PS-2025, PS-2026, WP-H, WF-2024 |
+| C19 | Énumération des comptes, identifiant « admin » | Archives d'auteur, API REST des utilisateurs, oEmbed, sitemap des auteurs ; noms à risque (`admin`, `test`, nom du site) : `rest_api`, `brute_force_login` | Pas d'identifiant `admin` ni de compte de test | OWASP A07, WP-H, WP-BF |
 
 ## Testées en partie
 
 | # | Classe | Ce que l'outil voit, et ce qui lui échappe | Ce que vous vérifiez | Sources |
 |---|---|---|---|---|
+| C08 | Fichiers sensibles servis | Avec `--authorized` seulement : copies de `wp-config.php`, `debug.log`, `.env`, `.git/`, dumps SQL, `.user.ini`, `phpinfo()` exposé, phpMyAdmin et Adminer : `file_exposure`, `database_exposure`. Pour repérer un `phpinfo()` ou un outil de base, quelques fichiers PHP devinés à la racine sont demandés (`info.php`, `phpinfo.php`, `test.php`, `adminer.php`...) : un HEAD ou un GET les exécute | Retirer ces fichiers de la racine web | OWASP A01, A09, WF-2024, WP-H |
+| C10 | Installation ou configuration restée ouverte | Avec `--authorized` seulement : `wp-admin/install.php` et chaque écran de `wp-admin/setup-config.php` (choix de la langue, étape 1, formulaire de la base) : `database_exposure` | Aucun reste d'installation | WF-2024 |
+| C20 | Mots de passe d'application ouverts sans besoin | Le point d'accès des mots de passe d'application est interrogé sans authentification et doit refuser : `rest_api`, `wp_features`. Que la fonction serve ou non ne se voit pas | Les désactiver s'ils ne servent pas | WP-AP |
+| C50 | Site déjà compromis (spam, redirections, scripts injectés) | Ce que le site sert : code injecté, spam SEO, cloaking, faux CAPTCHA ClickFix, chargeurs EtherHiding, profils de visite comparés, passe Chromium avec `--render`, `auto_prepend_file` inconnu dans `.user.ini` (`--authorized`) : `malware_detection`, `cloaking_seo_spam`, `visit_profiles`, `client_injection`, `browser_render`, `file_exposure`. Une infection qui ne se montre pas, ou qui trie ses visiteurs, échappe à l'audit | Contrôle d'intégrité côté serveur, sauvegardes | PS-2025, PS-2026, WP-H, WF-2024 |
 | C05 | Logiciel serveur obsolète | La version de l'en-tête `Server` est signalée comme divulguée, mais son ancienneté n'est pas jugée : `server_security` | Hébergeur qui maintient ses versions | WP-H, OWASP A03 |
 | C06 | Composants de source non fiable | Scripts tiers sans `integrity`, scripts de domaines suspects, extensions nullées (`--authorized`) : `third_party_scripts`, `nulled_plugins`. Une porte dérobée dans une extension reste invisible | Composants de wordpress.org ou d'éditeurs connus | OWASP A03, A08, WP-H, PS-2026 |
 | C09 | Listage de répertoires | Pages d'index de `wp-content/`, `uploads/` et voisins, seulement avec `--authorized` : `file_exposure`, `server_security` | Listage désactivé sur le serveur | OWASP A01, A02 |

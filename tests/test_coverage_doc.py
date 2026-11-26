@@ -14,7 +14,7 @@ SECTIONS = {
     "COUVERTURE.md": ("Testées", "Testées en partie", "Invisibles de l'extérieur",
                       "Actives seulement"),
 }
-EXPECTED = (15, 11, 10, 14)
+EXPECTED = (11, 15, 10, 14)
 
 
 def sections(name):
@@ -48,11 +48,14 @@ def test_both_languages_classify_alike():
 @pytest.mark.parametrize("name", list(SECTIONS))
 def test_every_cited_check_exists(name):
     text = (DOCS / name).read_text(encoding="utf-8")
-    cited = set(re.findall(r"`([a-z]+(?:_[a-z0-9]+)+)`", text))
-    not_checks = {"display_errors", "auto_prepend_file"}
-    unknown = sorted(c for c in cited - not_checks if c not in CHECK_REGISTRY
-                     and not c.isupper())
+    # Tout identifiant en minuscules entre accents graves est un nom de check,
+    # sauf les réglages et commandes listés ici.
+    cited = set(re.findall(r"`([a-z][a-z0-9_]*)`", text))
+    not_checks = {"display_errors", "auto_prepend_file", "openssl", "wp_",
+                  "admin", "test", "integrity"}  # noms de comptes, attribut HTML
+    unknown = sorted(c for c in cited - not_checks if c not in CHECK_REGISTRY)
     assert unknown == [], unknown
+    assert "fingerprint" in cited and "ssl_tls" in cited
 
 
 def test_readmes_link_the_map():
