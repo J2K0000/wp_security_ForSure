@@ -19,6 +19,11 @@ target, what stays your responsibility, and where the legal lines are. It is not
 - With `--authorized` (level 2) it also checks whether well-known unlinked paths exist: backups,
   environment and configuration files, `.git/`, debug logs, plugin and theme slugs. It is still
   read-only, but guessing paths is reconnaissance that a site owner did not invite.
+- Requests to the audited site are spaced (1 second, 2 seconds for guessed paths; `--delay` to slow
+  down further), and the audit stops at the first sign that the site blocks it. Shared hosting
+  providers temporarily ban an address that sends many requests in a short time, and the ban also
+  locks you out of the site's admin. Audit your own sites from a connection you can
+  afford to lose for a while, and raise `--delay` before using `--authorized` on shared hosting.
 - Each audit has a request budget, and requests carry a user agent that names the tool and links to
   this repository, so the site owner can identify the traffic. Visitor profiles are the exception:
   about 25 requests on the home page and at most two pages it links present a browser or Googlebot,
@@ -76,6 +81,11 @@ exposure of a site; penetration testing belongs to other tools and to signed eng
   `adminer.php`...) sont demandés pour repérer un `phpinfo()` ou un outil de base exposé, et trois fichiers
   du cœur (`wp-admin/install.php`, `wp-admin/setup-config.php`, `wp-config-sample.php`) pour vérifier que
   l'installation est fermée ; la requête les exécute.
+- Les requêtes vers le site sont espacées (1 seconde, 2 secondes pour les chemins devinés ; `--delay`
+  pour ralentir encore) et l'audit s'arrête au premier signe de blocage. Un hébergement mutualisé
+  bannit temporairement une adresse qui envoie beaucoup de requêtes en peu de temps, et ce
+  bannissement coupe aussi l'accès à l'administration du site. Augmentez `--delay` avant
+  d'utiliser `--authorized` sur un hébergement mutualisé.
 - Par défaut, il ne demande que la page d'accueil, ses ressources et les points d'entrée publics de
   WordPress. `--authorized` ajoute la recherche de chemins non liés, à réserver à un audit sous mandat
   écrit.

@@ -284,6 +284,11 @@ def _run_engine(monkeypatch, tmp_path, authorized=False):
     assert config["authorized"] is False  # défaut livré : pas de niveau 2
     config["timeout"] = 5
     config["authorized"] = authorized
+    # Fixture de portée module : montée avant l'autouse de conftest qui
+    # neutralise l'attente. La cadence livrée (request_delay) est vérifiée par
+    # tests/test_target_guard.py ; ici, aucune attente réelle.
+    from wp_security_forsure.scanner.checks import base as base_mod
+    monkeypatch.setattr(base_mod, "_sleep", lambda seconds: None)
 
     # Attribution : chaque requête enregistrée porte le nom du check en cours.
     current = {"check": "moteur"}

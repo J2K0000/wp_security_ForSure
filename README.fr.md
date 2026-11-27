@@ -44,6 +44,7 @@ Cet outil prend le parti inverse et l'impose dans le code, pas dans la documenta
 | Les secrets ne sortent pas dans les rapports | Un mot de passe, une clé ou un sel trouvé dans un fichier exposé est masqué à la source, puis à nouveau avant l'écriture de tout rapport. |
 | Trafic identifiable | Les requêtes portent un User-Agent qui nomme l'outil et renvoie à ce dépôt. Deux exceptions documentées, parce que les injections se cachent des outils : les profils de visite se présentent comme un navigateur ou comme Googlebot, et le contrôle du cloaking comme Googlebot, sur l'accueil et au plus deux pages qu'il lie. |
 | La passe navigateur suit les mêmes règles | `--render` est désactivé par défaut. Dans Chromium, seules `GET`, `HEAD` et `OPTIONS` partent ; les autres méthodes, les nœuds RPC de blockchain, la navigation vers un autre site, les WebSocket, les téléchargements et les adresses privées sont bloqués et notés. Le presse-papiers est intercepté, jamais écrit. Le bac à sable de Chromium est obligatoire : sans lui, la passe ne démarre pas. |
+| Respect de l'hébergeur | Les requêtes vers le site audité sont espacées : 1 seconde, 2 secondes pour les chemins devinés (`--delay` ou `request_delay` pour changer). Une connexion coupée est retentée une fois, puis le contrôle dit que son résultat est partiel. L'audit s'arrête au premier signe de blocage (HTTP 429, page de bannissement d'un hébergeur, défi Cloudflare, ou accueil qui passe à 403 après une série de refus), n'envoie plus rien et se déclare incomplet. Un hébergement mutualisé bannit un audit trop rapide : à pleine vitesse, le premier audit réel de l'outil a fait bannir son adresse en dix secondes. |
 | Les erreurs ne sont pas cachées | Un contrôle qui échoue est rapporté « non réalisé », le verdict dit que l'audit est incomplet, et le code de sortie vaut `3`. |
 
 ## Installation
@@ -72,6 +73,7 @@ wp-security-forsure audit https://exemple.fr --output rapport.html
 wp-security-forsure audit https://exemple.fr --checks fingerprint,vulnerability_scan --format json
 wp-security-forsure audit https://exemple.fr --authorized   # seulement avec l'autorisation écrite du propriétaire
 wp-security-forsure audit https://exemple.fr --render       # exécute aussi les pages dans un Chromium isolé
+wp-security-forsure audit https://exemple.fr --delay 3      # plus lent, pour un hébergement mutualisé fragile
 wp-security-forsure refresh-kev    # télécharge le catalogue CISA KEV (réseau, à la demande seulement)
 wp-security-forsure refresh-epss   # télécharge les scores EPSS (réseau, à la demande seulement)
 ```
@@ -88,7 +90,7 @@ tête quand un constat indique une compromission. En JSON : `audit_limits`, `rec
 | 0 | Audit complet, aucun constat critique confirmé |
 | 1 | Au moins un constat critique confirmé (l'emporte sur 3) |
 | 2 | Erreur d'usage : argument invalide, check inconnu, configuration illisible |
-| 3 | Audit incomplet : cible injoignable, ou au moins un contrôle en erreur |
+| 3 | Audit incomplet : cible injoignable, audit bloqué par le site, ou au moins un contrôle en erreur |
 
 Chaque constat porte un niveau de confiance. `confirmed` signifie que la preuve est déterministe ;
 `potential` qu'elle est à vérifier à la main. L'outil ne transforme jamais une hypothèse en certitude.

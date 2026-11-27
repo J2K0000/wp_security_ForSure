@@ -41,6 +41,7 @@ This tool takes the opposite position and enforces it in code, not in documentat
 | Secrets stay out of reports | A password, key or salt found in an exposed file is masked at the source and again before any report is written. |
 | Identifiable traffic | Requests carry a user agent that names the tool and links to this repository. Two documented exceptions, because injections hide from tools: visitor profiles present a browser or Googlebot, and the cloaking check presents Googlebot, on the home page and at most two pages it links. |
 | The browser pass follows the same rules | `--render` is off by default. In Chromium, only `GET`, `HEAD` and `OPTIONS` leave; other methods, blockchain RPC nodes, navigation to another site, WebSockets, downloads and private addresses are blocked and recorded. The clipboard is intercepted, never written. Chromium's sandbox is required: without it the pass does not start. |
+| Polite to the host | Requests to the audited site are spaced: 1 second apart, 2 seconds for guessed paths (`--delay` or `request_delay` to change it). A dropped connection is retried once, then the check says its result is partial. The audit stops at the first sign that the site blocks it (HTTP 429, a hosting provider's ban page, a Cloudflare challenge, or a home page that turns to 403 after a run of refusals), sends nothing more, and reports itself incomplete. Shared hosting bans fast audits: the first real run of this tool, at full speed, got its address banned in ten seconds. |
 | Errors are not hidden | A check that fails is reported as "not performed", the verdict says the audit is incomplete, and the exit code is `3`. |
 
 ## Install
@@ -69,6 +70,7 @@ wp-security-forsure audit https://example.com --output report.html
 wp-security-forsure audit https://example.com --checks fingerprint,vulnerability_scan --format json
 wp-security-forsure audit https://example.com --authorized   # only with the owner's written permission
 wp-security-forsure audit https://example.com --render       # also run pages in a sandboxed Chromium
+wp-security-forsure audit https://example.com --delay 3      # slower, for a fragile shared host
 wp-security-forsure refresh-kev    # download the CISA KEV catalogue (network, on request only)
 wp-security-forsure refresh-epss   # download EPSS scores (network, on request only)
 ```
@@ -85,7 +87,7 @@ Usernames found during the audit are masked (`ju***`) unless they are themselves
 | 0 | Complete audit, no confirmed critical finding |
 | 1 | At least one confirmed critical finding (takes precedence over 3) |
 | 2 | Usage error: bad argument, unknown check, unreadable configuration |
-| 3 | Incomplete audit: target unreachable, or at least one check failed |
+| 3 | Incomplete audit: target unreachable, blocked the audit, or at least one check failed |
 
 Each finding carries a confidence level. `confirmed` means the evidence is deterministic;
 `potential` means it has to be checked by hand. The tool never upgrades a guess to a certainty.

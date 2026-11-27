@@ -226,6 +226,11 @@ def build_parser() -> argparse.ArgumentParser:
                              "de --output, sinon terminal)")
     parser.add_argument("--timeout", type=int, default=30,
                         help="Timeout HTTP (secondes)")
+    parser.add_argument("--delay", type=float, default=None, metavar="SECONDES",
+                        help=("Délai entre deux requêtes vers le site audité "
+                              "(défaut : request_delay de la configuration, 1 s ; "
+                              "2 s au moins pour les chemins devinés). "
+                              "Augmenter sur un hébergement mutualisé."))
     parser.add_argument("--config",
                         help="Chemin vers config personnalisée")
     parser.add_argument("--authorized", action="store_true", default=False,
@@ -297,6 +302,12 @@ def main(argv=None):
                          "un dictionnaire YAML est attendu")
         config.update(custom)
     config["timeout"] = args.timeout
+    if args.delay is not None:
+        if args.delay < 0:
+            parser.error("--delay : un nombre de secondes positif ou nul est attendu")
+        config["request_delay"] = args.delay
+        config["unlinked_request_delay"] = max(
+            args.delay, float(config.get("unlinked_request_delay") or 0))
     # Niveau 2 : option CLI, ou clé `authorized` de la configuration.
     config["authorized"] = bool(args.authorized or config.get("authorized"))
     # Passe de rendu : option CLI, ou clé `render` de la configuration.

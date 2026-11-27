@@ -216,6 +216,17 @@ def _relative(url_path: str, target: str) -> str:
 
 # ── Classement ───────────────────────────────────────────────────────────
 
+# Scripts d'installation et de mise à jour du cœur : niveau 2 même quand une
+# page les cite. readme.html, livré avec WordPress, renvoie vers
+# wp-admin/install.php et wp-admin/upgrade.php : sans cette règle, lire
+# readme.html (niveau 1) débloquait leur exécution sans --authorized, contre la
+# garantie écrite dans README.md et docs/RESPONSIBLE_USE.md.
+CORE_INSTALL_SCRIPTS = frozenset({
+    "wp-admin/install.php", "wp-admin/setup-config.php", "wp-admin/upgrade.php",
+    "wp-admin/maint/repair.php", "wp-config-sample.php",
+})
+
+
 def classify(method: str, url: str, target: str,
              references: Optional[Dict] = None) -> Optional[int]:
     """Niveau d'une requête vers la cible (0, 1 ou 2), ou None pour un hôte
@@ -225,6 +236,8 @@ def classify(method: str, url: str, target: str,
     parts = urlsplit(url or "")
     if (parts.hostname or "").lower() not in scope_hosts(target):
         return None
+    if _relative(parts.path, target) in CORE_INSTALL_SCRIPTS:
+        return TIER_UNLINKED
     if references:
         known = references.get(reference_key(url, target))
         if known is not None:

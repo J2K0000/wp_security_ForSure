@@ -812,43 +812,37 @@ class RestApiCheck(BaseCheck):
                 url=base_url,
             )
 
-        # ── Check reflective CORS ──
-        if "evil.com" in evil_origin:
-            severity = "CRITICAL" if evil_cred == "true" else "HIGH"
+        # ── Réflexion de l'Origin par l'API REST ──
+        # Comportement natif : rest_send_cors_headers() renvoie toute Origin
+        # reçue (« null » compris) avec Access-Control-Allow-Credentials: true
+        # (https://developer.wordpress.org/reference/functions/rest_send_cors_headers/).
+        # Il ne livre rien d'authentifié : sans nonce wp_rest, une requête qui
+        # porte les cookies est traitée en visiteur anonyme
+        # (https://developer.wordpress.org/reference/functions/rest_cookie_check_errors/).
+        reflected = "evil.com" in evil_origin
+        null_ok = null_origin == "null" or "null" in null_origin
+        if reflected or null_ok:
+            origins = ", ".join(o for o, ok in (("https://evil.com", reflected),
+                                               ("null", null_ok)) if ok)
             self._result.add_finding(
                 message=(
-                    "Reflective CORS detected, Origin header "
-                    "is echoed back in Access-Control-Allow-Origin"
+                    "CORS réfléchi par l'API REST (Origin renvoyée, "
+                    "credentials autorisés) : comportement natif de WordPress, "
+                    "neutralisé par le nonce REST"
                 ),
-                severity=severity,
+                severity="INFO",
                 evidence=(
-                    f"Origin: https://evil.com -> "
-                    f"Access-Control-Allow-Origin: {evil_origin}\n"
-                    f"Access-Control-Allow-Credentials: {evil_cred}\n"
-                    + (
-                        "⚠️ With credentials allowed, an attacker "
-                        "can exfiltrate authenticated API data"
-                        if evil_cred == "true"
-                        else ""
-                    )
+                    f"Origin testées et renvoyées : {origins}\n"
+                    f"Access-Control-Allow-Origin: {evil_origin or null_origin}\n"
+                    f"Access-Control-Allow-Credentials: {evil_cred or null_cred}\n"
+                    "WordPress envoie ces en-têtes sur toute réponse REST qui "
+                    "reçoit une Origin. L'authentification par cookie exige en "
+                    "plus le nonce wp_rest : une page tierce ne lit que des "
+                    "données publiques. À revoir seulement si une extension "
+                    "authentifie l'API autrement que par le nonce."
                 ),
                 url=base_url,
-            )
-
-        # ── Check null origin ──
-        if null_origin == "null" or "null" in null_origin:
-            self._result.add_finding(
-                message=(
-                    "Null Origin accepted in CORS "
-                    "(Access-Control-Allow-Origin: null)"
-                ),
-                severity="HIGH",
-                evidence=(
-                    "Sandboxed iframes can make cross-origin requests.\n"
-                    f"Access-Control-Allow-Origin: {null_origin}\n"
-                    f"Access-Control-Allow-Credentials: {null_cred}"
-                ),
-                url=base_url,
+                confidence="confirmed",
             )
 
         # ── Check bypass d'allowlist via origin dérivé du domaine cible ──
@@ -1060,6 +1054,11 @@ class RestApiCheck(BaseCheck):
                 continue
 
             if isinstance(data, dict) and "code" in data:
+                continue
+            if isinstance(data, dict) and "namespace" in data and "routes" in data:
+                # Index du namespace (liste des routes) : public par conception
+                # du cœur, déjà signalé en INFO par wp_features. Les routes de
+                # test, elles, exigent une authentification.
                 continue
 
             severity = "HIGH"

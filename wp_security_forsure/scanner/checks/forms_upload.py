@@ -441,16 +441,33 @@ class FormsUploadCheck(BaseCheck):
         # 2) Formulaire natif wp-login.php?action=register, lecture seule,
         # la seule présence du formulaire suffit à établir que l'inscription
         # est ouverte (déterministe -> confirmed).
+        # Inscription fermée : wp-login.php redirige vers
+        # wp-login.php?registration=disabled, page qui affiche le formulaire de
+        # CONNEXION (champ user_login). Seul le formulaire d'inscription du cœur
+        # (form id="registerform", champ user_email) établit l'ouverture.
+        # Source : wordpress-develop, src/wp-login.php (action « register »).
         reg_page = "wp-login.php?action=register"
         try:
             resp = self.http_get(reg_page)
-            if resp.status_code == 200:
+            final_url = (resp.url or "").lower()
+            redirected = any("registration=disabled" in (h.headers.get("location") or "").lower()
+                             for h in (resp.history or []))
+            if "registration=disabled" in final_url or redirected:
+                findings.append({
+                    "message": "Inscription fermée (wp-login.php?registration=disabled)",
+                    "severity": "INFO",
+                    "evidence": ("wp-login.php?action=register redirige vers "
+                                 "wp-login.php?registration=disabled : WordPress "
+                                 "refuse les inscriptions (réglage « Tout le monde "
+                                 "peut s'inscrire » désactivé)."),
+                    "url": f"{self.target}/{reg_page}",
+                    "confidence": "confirmed",
+                })
+            elif resp.status_code == 200:
                 page = resp.text or ""
                 has_form = (
-                    "id=\"registerform\"" in page
-                    or "user_login" in page
-                    or "user_email" in page
-                    or "action=register" in page
+                    'id="registerform"' in page
+                    or ('name="user_email"' in page and "action=register" in page)
                 )
                 if has_form:
                     findings.append({

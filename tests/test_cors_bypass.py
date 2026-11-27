@@ -73,4 +73,23 @@ def test_full_reflection_does_not_double_report_as_bypass():
     chk._check_cors()
     # La réflexion totale est signalée par ailleurs ; pas de doublon "bypass".
     assert _bypass_findings(chk) == []
-    assert any("Reflective CORS" in f["message"] for f in chk._result.findings)
+    assert any("CORS réfléchi par l'API REST" in f["message"] for f in chk._result.findings)
+
+
+@responses.activate
+def test_core_rest_reflection_with_credentials_is_info_not_critical():
+    """rest_send_cors_headers() renvoie toute Origin avec credentials : natif,
+    neutralisé par le nonce REST, donc INFO (faux CRITICAL du premier audit réel)."""
+    core = {"Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "OPTIONS, GET, POST, PUT, PATCH, DELETE"}
+    responses.add(responses.GET, CORS_URL, status=200)
+    responses.add(responses.GET, CORS_URL, status=200,
+                  headers={"Access-Control-Allow-Origin": "https://evil.com", **core})
+    responses.add(responses.GET, CORS_URL, status=200,
+                  headers={"Access-Control-Allow-Origin": "null", **core})
+    chk = make_check(RestApiCheck)
+    chk._check_cors()
+    cors = [f for f in chk._result.findings if "CORS" in f["message"]]
+    assert len(cors) == 1
+    assert cors[0]["severity"] == "INFO"
+    assert "nonce" in cors[0]["message"]

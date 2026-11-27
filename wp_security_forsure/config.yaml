@@ -31,6 +31,16 @@ max_response_bytes: 5242880 # Borne de lecture des corps HTTP (5 Mio). 0 = illim
 max_requests: 2000          # Budget de requêtes réseau par audit. 0 = illimité
 skip_reachability: false    # true = ne pas sonder la joignabilité avant l'audit
 
+# Cadence vers le site audité (secondes entre deux requêtes). Un hébergement
+# mutualisé bannit l'adresse d'un audit trop rapide : à pleine vitesse, le
+# premier audit réel de l'outil a été banni en dix secondes. Option --delay.
+request_delay: 1.0          # requêtes de niveau 0 et 1
+unlinked_request_delay: 2.0 # chemins devinés (niveau 2, --authorized)
+# Refus (403, 503) ou échecs consécutifs avant de vérifier que l'accueil
+# répond encore ; s'il est refusé à son tour, l'audit s'arrête (code 3).
+block_streak: 5
+connection_retries: 1       # nouvelle tentative après une coupure de connexion
+
 # Profils de visite (check visit_profiles) : l'accueil et jusqu'à
 # visit_profiles_pages pages internes liées depuis l'accueil, demandés sous
 # 8 profils (clic depuis Google, mobile, autre langue, visite directe x2, faux

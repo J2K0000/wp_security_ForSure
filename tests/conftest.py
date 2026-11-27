@@ -57,3 +57,20 @@ def offline_getaddrinfo(host, port=None, *args, **kwargs):
 @pytest.fixture(autouse=True)
 def _dns_hors_ligne(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", offline_getaddrinfo)
+
+
+# ── Cadence ──────────────────────────────────────────────────────────────
+# Le client HTTP espace les requêtes vers la cible (request_delay). Les tests
+# n'attendent pas : l'attente est remplacée par un relevé, que
+# tests/test_target_guard.py lit pour vérifier les délais.
+@pytest.fixture(autouse=True)
+def _sans_attente(monkeypatch):
+    from wp_security_forsure.scanner.checks import base
+    waits = []
+    monkeypatch.setattr(base, "_sleep", waits.append)
+    # Les mocks `responses` répondent ConnectionError à toute URL non prévue :
+    # sans réglage explicite, ni nouvelle tentative ni détection de blocage
+    # (les tests qui chargent config.yaml, et test_target_guard.py, les ont).
+    monkeypatch.setattr(base, "DEFAULT_BLOCK_STREAK", 0)
+    monkeypatch.setattr(base, "DEFAULT_CONNECTION_RETRIES", 0)
+    return waits

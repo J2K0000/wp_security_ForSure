@@ -393,3 +393,33 @@ def test_full_run_on_insecure_site_produces_findings_across_subchecks():
     assert result.findings  # au moins un finding remonté
     assert result.passed is False
     assert any(f["severity"] == "CRITICAL" for f in result.findings)
+
+
+# ---------------------------------------------------------------------------
+# Cookie de test du cœur : ni cookie d'authentification, ni attribut à reprocher
+# (faux HIGH et faux MEDIUM du premier audit réel)
+# ---------------------------------------------------------------------------
+
+TEST_COOKIE_HEADER = ("Set-Cookie", "wordpress_test_cookie=WP%20Cookie%20check; "
+                      "path=/; secure; HttpOnly")
+
+
+@responses.activate
+def test_test_cookie_is_not_an_auth_cookie_before_login():
+    responses.add(responses.GET, LOGIN, body="<html></html>", status=200,
+                  headers=[TEST_COOKIE_HEADER])
+    chk = _mk()
+    chk._check_session_fixation()
+    assert not [f for f in chk._result.findings if f["severity"] in ("HIGH", "CRITICAL")]
+
+
+@responses.activate
+def test_test_cookie_without_samesite_is_not_reported():
+    responses.add(responses.GET, LOGIN, body="<html></html>", status=200,
+                  headers=[TEST_COOKIE_HEADER])
+    _no_cookie(HOME)
+    _no_cookie(AJAX)
+    chk = _mk()
+    chk._check_cookie_flags()
+    assert not [f for f in chk._result.findings
+                if "wordpress_test_cookie" in f["message"] and f["severity"] != "INFO"]

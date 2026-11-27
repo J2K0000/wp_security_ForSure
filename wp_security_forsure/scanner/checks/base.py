@@ -15,16 +15,21 @@ passif, lecture seule » du scanner :
   - niveaux d'accès (scanner/access_tiers.py) : chaque requête vers la cible
     est classée 0, 1 ou 2 ; sans l'option `authorized`, une requête de niveau 2
     lève AccessTierRequired ; une requête interdite à tout niveau (wp-cron.php,
-    diagnostic Site Health, PHP deviné sous wp-content/) lève ForbiddenProbe.
+    diagnostic Site Health, PHP deviné sous wp-content/) lève ForbiddenProbe ;
+  - cadence et blocage (TargetGuard) : un délai sépare deux requêtes vers la
+    cible (`request_delay`, plus long pour un chemin deviné), une coupure de
+    connexion est retentée une fois puis déclarée, et l'audit s'arrête dès que
+    le site bloque son adresse (TargetBlocked).
 """
 
 from dataclasses import dataclass, field
-from typing import Any, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urljoin, urlsplit
 import ipaddress
 import json
 import re
 import socket
+import time
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -45,6 +50,34 @@ MAX_REDIRECTS = 5
 
 # Budget de requêtes réseau par audit (clé de config `max_requests`).
 DEFAULT_MAX_REQUESTS = 2000
+
+# Cadence vers la cible, en secondes entre deux requêtes (clés de config
+# `request_delay` et `unlinked_request_delay`). Choix de wp_security_ForSure :
+# un hébergement mutualisé bannit une adresse qui enchaîne les requêtes, sans
+# publier de seuil (OVHcloud : « un très grand nombre de requêtes en un temps
+# extrêmement court », https://docs.ovhcloud.com/fr/guides/web-cloud/web-hosting/
+# ip-has-been-banned-diagnosis). Le premier audit réel de l'outil, à pleine
+# vitesse, a été banni dix secondes après le début des chemins devinés.
+DEFAULT_REQUEST_DELAY = 1.0
+DEFAULT_UNLINKED_REQUEST_DELAY = 2.0
+# Réponses 403/503 ou échecs consécutifs avant de vérifier si l'accueil répond
+# encore (clé `block_streak`, 0 = jamais).
+DEFAULT_BLOCK_STREAK = 5
+# Nouvelles tentatives après une coupure de connexion vers la cible (clé
+# `connection_retries`) : une connexion réutilisée que le serveur a fermée
+# échoue sans qu'aucune réponse n'ait été lue.
+DEFAULT_CONNECTION_RETRIES = 1
+
+# Horloge et attente, remplacées dans les tests.
+_sleep = time.sleep
+_monotonic = time.monotonic
+
+# Pages de blocage reconnues dans le corps d'une réponse 403 ou 503, en
+# minuscules. Chaque entrée cite la documentation de l'éditeur.
+BLOCK_PAGE_MARKERS: Tuple[Tuple[str, str], ...] = (
+    # https://docs.ovhcloud.com/fr/guides/web-cloud/web-hosting/ip-has-been-banned-diagnosis
+    ("your ip has been banned", "OVHcloud"),
+)
 
 
 class PassivityViolation(Exception):
@@ -96,6 +129,96 @@ class ForbiddenProbe(AccessPolicyViolation):
     def __init__(self, method: str, url: str, reason: str):
         self.method, self.url, self.reason = method, url, reason
         super().__init__(f"Requête interdite à tout niveau : {method} {url} ({reason}).")
+
+
+class TargetBlocked(BaseException):
+    """Le site audité bloque l'adresse de l'audit (pare-feu, hébergeur,
+    limitation de débit) : plus aucune requête ne part vers lui.
+
+    Hérite de BaseException, comme AccessPolicyViolation : un check qui attrape
+    Exception ne doit pas conclure « non exposé » sur une page de blocage. Le
+    moteur arrête l'audit et le déclare incomplet.
+    """
+
+    def __init__(self, reason: str, url: str = ""):
+        self.reason, self.url = reason, url
+        super().__init__(f"Audit interrompu : {reason}")
+
+
+def block_signal(resp) -> Optional[str]:
+    """Raison du blocage si `resp` est une réponse de blocage reconnue, sinon
+    None. Le corps n'est lu que s'il a déjà été lu (jamais de lecture ici)."""
+    status = getattr(resp, "status_code", None)
+    headers = getattr(resp, "headers", None) or {}
+    if status == 429:
+        # RFC 6585, section 4 : trop de requêtes dans un intervalle donné.
+        return "HTTP 429 Too Many Requests : le site limite le débit de l'audit"
+    if (headers.get("cf-mitigated") or "").strip().lower() == "challenge":
+        return "défi Cloudflare (en-tête cf-mitigated: challenge)"
+    if status in (403, 503) and getattr(resp, "_content_consumed", False):
+        body = getattr(resp, "_content", None) or b""
+        text = body[:20000].decode("utf-8", "replace").lower()
+        for marker, vendor in BLOCK_PAGE_MARKERS:
+            if marker in text:
+                return (f"page de blocage {vendor} (« {marker} », HTTP {status}) : "
+                        "l'adresse de l'audit est bannie")
+    return None
+
+
+class TargetGuard:
+    """Cadence, coupures et blocage des requêtes vers la cible, partagés par
+    tous les checks d'un audit (portés par la session)."""
+
+    def __init__(self, config: Optional[dict] = None):
+        config = config or {}
+        self.delay = max(0.0, float(config.get("request_delay",
+                                               DEFAULT_REQUEST_DELAY) or 0))
+        self.unlinked_delay = max(self.delay, float(config.get(
+            "unlinked_request_delay", DEFAULT_UNLINKED_REQUEST_DELAY) or 0))
+        self.streak_limit = int(config.get("block_streak", DEFAULT_BLOCK_STREAK) or 0)
+        self.retries = max(0, int(config.get("connection_retries",
+                                             DEFAULT_CONNECTION_RETRIES) or 0))
+        self.last: Optional[float] = None
+        self.streak = 0
+        self.blocked: Optional[TargetBlocked] = None
+        self.home_status: Optional[int] = None
+        self.lost: Dict[str, int] = {}
+        self.waited = 0.0
+
+    def pace(self, tier: Optional[int]) -> None:
+        """Attend le délai dû avant une requête vers la cible ; lève
+        TargetBlocked si l'audit a déjà été bloqué."""
+        if self.blocked is not None:
+            raise TargetBlocked(self.blocked.reason, self.blocked.url)
+        delay = self.unlinked_delay if tier == TIER_UNLINKED else self.delay
+        now = _monotonic()
+        if self.last is not None and delay > 0:
+            wait = self.last + delay - now
+            if wait > 0:
+                _sleep(wait)
+                self.waited += wait
+                now += wait
+        self.last = now
+
+    def block(self, reason: str, url: str = "") -> None:
+        self.blocked = TargetBlocked(reason, url)
+        raise TargetBlocked(reason, url)
+
+    def lose(self, check: str) -> None:
+        self.lost[check] = self.lost.get(check, 0) + 1
+
+
+def target_guard(session, config: Optional[dict] = None) -> TargetGuard:
+    """TargetGuard de l'audit, créé à la première demande et porté par la
+    session (un seul par audit)."""
+    guard = getattr(session, "_wpsf_guard", None)
+    if guard is None:
+        guard = TargetGuard(config)
+        try:
+            session._wpsf_guard = guard
+        except AttributeError:
+            pass
+    return guard
 
 
 def check_method(method: str) -> str:
@@ -319,6 +442,9 @@ class BaseCheck:
         self.config = config
         self.session = session
         install_passive_guard(session)
+        # Garde de cadence et de blocage de l'audit, liée à sa configuration
+        # (le moteur la crée ; un check instancié seul la crée ici).
+        target_guard(session, config)
         self.context = {}
         self._result = CheckResult(
             check_name=self.name,
@@ -407,12 +533,14 @@ class BaseCheck:
         if sender is not self.session:
             install_passive_guard(sender)
         scope = self._scope_hosts(url)
+        guard = target_guard(self.session, self.config)
+        target_hosts = access_tiers.scope_hosts(self.target)
         history: List[requests.Response] = []
         while True:
             check_destination(url)
-            self._consume_budget()
-            resp = sender.request(method, url, allow_redirects=False,
-                                  **kwargs)
+            on_target = (urlsplit(url).hostname or "").lower() in target_hosts
+            resp = self._request_once(sender, method, url, tier, guard,
+                                      on_target, kwargs)
             if method == "HEAD":
                 # Une réponse HEAD n'a pas de corps : rien à lire.
                 resp._content = b""
@@ -420,6 +548,8 @@ class BaseCheck:
                 resp.close()
             else:
                 resp = self._bounded(resp)
+            if on_target:
+                self._watch_block(guard, resp, url)
             if not (allow_redirects and resp.is_redirect):
                 break
             location = resp.headers.get("location")
@@ -450,6 +580,76 @@ class BaseCheck:
         if method != "HEAD" and record:
             record_references(self.session, resp, self.target, tier)
         return resp
+
+    def _request_once(self, sender, method: str, url: str, tier, guard: TargetGuard,
+                      on_target: bool, kwargs: dict) -> requests.Response:
+        """Une requête, cadencée si elle vise la cible. Vers la cible, une
+        coupure de connexion est retentée une fois (méthodes en lecture seule),
+        puis comptée comme requête perdue du check : le moteur la déclare."""
+        attempts = 1 + guard.retries if on_target else 1
+        for attempt in range(1, attempts + 1):
+            if on_target:
+                guard.pace(tier)
+            self._consume_budget()
+            try:
+                return sender.request(method, url, allow_redirects=False, **kwargs)
+            except SSRFBlocked:
+                raise
+            except requests.exceptions.RequestException as exc:
+                transient = isinstance(exc, (requests.exceptions.ConnectionError,
+                                             requests.exceptions.Timeout))
+                if not (on_target and transient):
+                    raise
+                guard.streak += 1
+                if (attempt < attempts
+                        and not isinstance(exc, requests.exceptions.ReadTimeout)):
+                    continue  # connexion coupée : une seconde tentative
+                guard.lose(self.name)
+                self._confirm_if_streak(guard)
+                raise
+        raise AssertionError("inaccessible")  # pragma: no cover
+
+    def _watch_block(self, guard: TargetGuard, resp: requests.Response,
+                     url: str) -> None:
+        """Arrête l'audit sur une page de blocage reconnue ; après une série de
+        403/503, vérifie que l'accueil répond encore comme au début."""
+        reason = block_signal(resp)
+        if reason:
+            guard.block(reason, url)
+        if resp.status_code in (403, 503):
+            guard.streak += 1
+            self._confirm_if_streak(guard)
+        else:
+            guard.streak = 0
+
+    def _confirm_if_streak(self, guard: TargetGuard) -> None:
+        """Après `block_streak` refus ou échecs consécutifs, un GET de l'accueil
+        tranche : il répond comme au début de l'audit (les refus étaient ceux
+        de chemins protégés, l'audit continue) ou il est refusé à son tour
+        (l'adresse est bloquée, l'audit s'arrête)."""
+        limit = guard.streak_limit
+        if not limit or guard.streak < limit:
+            return
+        guard.streak = 0
+        home = self.target.rstrip("/") + "/"
+        guard.pace(TIER_HOME)
+        self._consume_budget()
+        try:
+            resp = self.session.get(home, allow_redirects=False,
+                                    timeout=self.config.get("timeout", 30))
+        except requests.exceptions.RequestException as exc:
+            guard.block(f"l'accueil ne répond plus ({type(exc).__name__}) après "
+                        f"{limit} refus ou échecs consécutifs", home)
+            return
+        reason = block_signal(resp)
+        if reason:
+            guard.block(reason, home)
+        baseline = guard.home_status
+        if resp.status_code in (403, 429, 503) and baseline not in (403, 429, 503):
+            before = f"HTTP {baseline}" if baseline else "une réponse normale"
+            guard.block(f"l'accueil répond HTTP {resp.status_code} ({before} au "
+                        f"début de l'audit) après {limit} refus ou échecs "
+                        "consécutifs", home)
 
     def profile_client(self) -> requests.Session:
         """Session à cookies vierges pour un profil de visite, garde passive

@@ -226,51 +226,17 @@ def test_captcha_word_is_not_read_as_a_waf():
 
 
 @responses.activate
-def test_rate_limiting_429_detected_on_first_request():
-    _register_baseline(home_status=429)
+def test_rate_limiting_probe_sends_no_burst():
+    """Plus de rafale de 3 requêtes vers l'accueil pour provoquer un 429 :
+    chercher à déclencher la protection du site fait bannir l'adresse de
+    l'audit. Un 429 reçu pendant l'audit l'arrête (tests/test_target_guard.py)."""
+    _register_baseline(home_status=200)
     chk = _mk()
-    result = chk.run()
+    chk.run()
+    home_gets = [c for c in responses.calls
+                 if c.request.method == "GET" and c.request.url.rstrip("/") == HOME.rstrip("/")]
+    assert len(home_gets) <= 1, [c.request.url for c in responses.calls]
 
-    rl = _named(result.findings, "rate limiting")
-    assert rl, result.findings
-    assert rl[0]["severity"] == "INFO"
-
-
-@responses.activate
-def test_rate_limiting_429_detected_on_later_request_not_cached():
-    """La boucle de rate-limiting envoie 3 requêtes fraîches (no_cache=True) vers
-    "/" : la 1re (baseline générale + 1re itération) est 200, la 2e itération
-    est 429. Preuve que la boucle n'est plus servie par le cache GET (qui aurait
-    renvoyé le même 200 baseline aux 3 itérations)."""
-    responses.add(responses.HEAD, HOME, status=200)
-    # Séquence chronologique des appels réseau réels vers "/" (sans query) :
-    responses.add(responses.GET, HOME, body=_CLEAN_BODY, status=200,
-                  match=_NO_QUERY)  # 1) baseline (_get_body)
-    responses.add(responses.GET, HOME, status=200,
-                  match=_NO_QUERY)  # 2) rate-limiting itération 1 -> pas encore limité
-    responses.add(responses.GET, HOME, status=429, headers={"Retry-After": "30"},
-                  match=_NO_QUERY)  # 3) rate-limiting itération 2 -> 429
-    responses.add(responses.GET, HOME, status=429, headers={"Retry-After": "30"},
-                  match=_NO_QUERY)  # 4) itération 3 (non consommée : la boucle
-                                     #    retourne dès le 429 de l'itération 2)
-    responses.add(responses.GET, LOGIN, body=_CLEAN_BODY, status=200)
-    responses.add(
-        responses.GET, re.compile(re.escape(TARGET) + r"/.+"),
-        body=_CLEAN_BODY, status=200,
-    )
-
-    chk = _mk()
-    result = chk.run()
-
-    rl = _named(result.findings, "rate limiting")
-    assert rl, result.findings
-    assert "request 2" in rl[0]["message"]
-    assert "30" in rl[0]["evidence"]
-
-
-# ---------------------------------------------------------------------------
-# Site propre, aucun vendor / anomalie détectée
-# ---------------------------------------------------------------------------
 
 @responses.activate
 def test_clean_site_yields_no_findings():

@@ -36,9 +36,12 @@ RISKY_NAMESPACE_PATTERNS: Dict[str, str] = {
     "akismet": "Akismet, low risk (spam checking)",
 }
 
-# Core namespaces to skip for custom endpoint analysis
+# Core namespaces to skip for custom endpoint analysis. Préfixes de namespace
+# enregistrés par le cœur (wp-includes/rest-api.php, create_initial_rest_routes,
+# et wp_oembed_register_route pour oembed/1.0) ; wp-abilities/v1 depuis 6.9.
 CORE_NAMESPACE_PREFIXES: Tuple[str, ...] = (
     "oembed/", "wp/v", "wp/site-health", "wp/block", "wp/pattern",
+    "wp-site-health/", "wp-block-editor/", "wp-abilities/", "batch/",
 )
 
 # JSONP callback parameter names

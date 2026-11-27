@@ -50,6 +50,9 @@ COMMON_THEMES = [
 CORE_REST_NAMESPACES = {
     "oembed", "wp", "wp-site-health", "wp-block-editor", "batch",
     "wp-block-directory", "akismet-nonce",
+    # Abilities API, dans le cœur depuis WordPress 6.9 :
+    # https://make.wordpress.org/core/2025/11/10/abilities-api-in-wordpress-6-9/
+    "wp-abilities",
 }
 
 # Préfixes de namespace REST connus qui ne correspondent pas directement au
@@ -70,6 +73,13 @@ NAMESPACE_TO_SLUG = {
     "wpforms": "wpforms-lite",
     "acf": "advanced-custom-fields",
     "wordfence": "wordfence",
+    # Module de connexion intégré à Wordfence (REST_NAMESPACE de
+    # modules/login-security/classes/controller/rest.php) ; l'extension autonome
+    # wordfence-login-security est fermée depuis le 17 août 2026.
+    "wordfence-login-security": "wordfence",
+    # SEOPress : slug wp-seopress, namespace seopress/v1 ; le slug « seopress »
+    # est une autre extension, fermée en 2015 (wordpress.org/plugins/seopress/).
+    "seopress": "wp-seopress",
     "wp-rocket": "wp-rocket",
     "polylang": "polylang",
     "pll": "polylang",

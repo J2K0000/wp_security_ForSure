@@ -114,9 +114,19 @@ def _cookie_attr(raw: str, attr: str) -> str:
     return m.group(1) if m else ""
 
 
+# Cookie de test du cœur (TEST_COOKIE, valeur fixe « WP Cookie check », posé par
+# wp-login.php avant toute connexion) : il ne porte aucun secret.
+# Source : wordpress-develop, src/wp-includes/default-constants.php et src/wp-login.php.
+TEST_COOKIE_NAME = "wordpress_test_cookie"
+
+
+def _is_test_cookie(name: str) -> bool:
+    return (name or "").lower() == TEST_COOKIE_NAME
+
+
 def _is_auth_cookie(name: str) -> bool:
     """Return True if *name* looks like a WordPress auth cookie."""
-    if not name:
+    if not name or _is_test_cookie(name):
         return False
     nl = name.lower()
     return any(nl.startswith(p.lower()) for p in _WP_AUTH_PREFIXES)
@@ -208,6 +218,8 @@ class CookiesSessionsCheck(BaseCheck):
             if not name or (name, page_path) in seen:
                 continue
             seen.add((name, page_path))
+            if _is_test_cookie(name):
+                continue  # valeur fixe sans secret : signalé en INFO plus bas
 
             secure = _cookie_attr(raw, "Secure")
             httponly = _cookie_attr(raw, "HttpOnly")

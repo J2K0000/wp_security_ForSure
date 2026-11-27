@@ -11,7 +11,8 @@ from wp_security_forsure import USER_AGENT
 
 from .access_tiers import TIER_HOME, TIER_UNLINKED
 from .checks.base import (AccessPolicyViolation, AccessTierRequired, BaseCheck,
-                          CheckResult, install_passive_guard, record_references)
+                          CheckResult, TargetBlocked, block_signal,
+                          install_passive_guard, record_references, target_guard)
 from .status import STATUS_ERROR, STATUS_OK, STATUS_SKIPPED, set_status
 
 logger = logging.getLogger(__name__)
@@ -128,6 +129,8 @@ class ScanEngine:
         # destination (SSRF) et budget s'appliquent aussi à la sonde de
         # joignabilité, avant que le premier check ne s'exécute.
         install_passive_guard(self.session)
+        # Cadence, coupures et blocage partagés par tous les checks.
+        self.guard = target_guard(self.session, config)
 
     def _requested_checks(self):
         """Liste des checks demandés, dans l'ordre voulu (avant tri depends_on).
@@ -191,7 +194,10 @@ class ScanEngine:
         """
         timeout = min(self.config.get("timeout", 30) or 30, 15)
         try:
+            self.guard.pace(TIER_HOME)
             resp = self._get_within_scope(self.target, timeout)
+        except TargetBlocked as e:
+            return self._blocked_result("reachability", "Cible injoignable", e)
         except requests.exceptions.RequestException as e:
             # Statut « error » : une cible injoignable rend l'audit incomplet,
             # elle ne doit pas être lue comme une vulnérabilité HIGH.
@@ -209,6 +215,15 @@ class ScanEngine:
                     "confidence": "confirmed",
                 }],
             ), STATUS_ERROR)
+        reason = block_signal(resp)
+        if reason:
+            # Déjà banni (page de blocage dès l'accueil) : aucun check ne part.
+            self.guard.blocked = TargetBlocked(reason, self.target)
+            return self._blocked_result("reachability", "Cible injoignable",
+                                        self.guard.blocked)
+        # Statut de l'accueil au début de l'audit : référence de la détection
+        # de blocage (un accueil qui passe ensuite à 403 signale un bannissement).
+        self.guard.home_status = resp.status_code
         self.context["probe_response"] = resp
         # Ce que l'accueil référence est de niveau 0 pour tous les checks.
         record_references(self.session, resp, self.target, TIER_HOME)
@@ -249,14 +264,55 @@ class ScanEngine:
         early = [n for n in check_names if n in PRE_PROBE_CHECKS]
         for name in early:
             results.append(self._run_check(name))
-        if not self.config.get("skip_reachability"):
+        if not self.config.get("skip_reachability") and self.guard.blocked is None:
             unreachable = self._probe_reachability()
             if unreachable is not None:
-                return [unreachable]
+                return results + [unreachable] if self.guard.blocked else [unreachable]
         for name in check_names:
             if name in CHECK_REGISTRY and name not in early:
                 results.append(self._run_check(name))
         return self._dedup_findings(results)
+
+    def _blocked_result(self, name: str, title: str, e: TargetBlocked,
+                        description: str = "") -> CheckResult:
+        """Statut « error » d'un check arrêté parce que le site bloque l'adresse
+        de l'audit : l'audit est incomplet, jamais présenté comme conforme."""
+        return set_status(CheckResult(
+            check_name=name,
+            title=title,
+            description=description,
+            severity="INFO",
+            passed=False,
+            findings=[{
+                "message": ("Audit interrompu : le site bloque l'adresse de "
+                            f"l'audit ({e.reason}). Aucune autre requête n'est "
+                            "partie vers lui."),
+                "severity": "INFO",
+                "evidence": (f"Dernière URL demandée : {e.url or self.target}. "
+                             "Attendre la levée du blocage avant de relancer, "
+                             "avec un délai plus long (--delay)."),
+                "url": e.url or self.target,
+                "confidence": "confirmed",
+            }],
+        ), STATUS_ERROR)
+
+    def _declare_lost(self, name: str, result: CheckResult) -> None:
+        """Déclare les requêtes de ce check restées sans réponse après une
+        nouvelle tentative : son résultat est partiel, jamais un « conforme »
+        silencieux."""
+        lost = self.guard.lost.pop(name, 0)
+        if lost:
+            result.add_finding(
+                message=(f"Résultat partiel : {lost} requête(s) de ce contrôle "
+                         "sans réponse (coupure de connexion ou délai dépassé, "
+                         "après une nouvelle tentative)"),
+                severity="INFO",
+                evidence=("Un constat absent sur ces requêtes ne prouve rien. "
+                          "Relancer le contrôle avec un délai plus long "
+                          "(--delay) pour le compléter."),
+                url=self.target,
+                confidence="potential",
+            )
 
     def _skipped(self, name: str, check_class, reason: str = "") -> CheckResult:
         result = set_status(CheckResult(
@@ -282,6 +338,11 @@ class ScanEngine:
             # Passe facultative non demandée (ex. --render).
             return self._skipped(name, check_class,
                                  getattr(check_class, "skip_reason", ""))
+        if self.guard.blocked is not None:
+            # Le site a bloqué l'adresse de l'audit : plus rien ne part.
+            return self._skipped(name, check_class, (
+                "Non réalisé : audit interrompu, le site bloque l'adresse de "
+                f"l'audit ({self.guard.blocked.reason})"))
         try:
             check_instance = check_class(self.target, self.config, self.session)
             check_instance.context = self.context   # contexte partagé
@@ -290,7 +351,13 @@ class ScanEngine:
                 raise TypeError(
                     f"run() a renvoyé {type(result).__name__} au lieu "
                     "d'un CheckResult")
+            self._declare_lost(name, result)
             return set_status(result, STATUS_OK)
+        except TargetBlocked as e:
+            logger.error("Check %r : %s", name, e)
+            self.guard.lost.pop(name, None)
+            return self._blocked_result(name, getattr(check_class, "title", name), e,
+                                        getattr(check_class, "description", ""))
         except AccessPolicyViolation as e:
             # Requête mal classée (niveau 2 sans --authorized) ou interdite
             # à tout niveau : statut « error », jamais un silence.

@@ -8,7 +8,7 @@ Inherits from BaseCheck. Covers:
   5) ModSecurity : en-têtes sec-* / x-mod-security sur une page normale
   6) Wordfence, wfvt_ cookie, wordfenceVerifiedHuman, "Blocked by Wordfence"
   7) Generic WAF : page de challenge / CAPTCHA servie sur la page d'accueil
-  8) Rate limiting, 3 rapid requests, 429 status, Retry-After header
+  8) Rate limiting : plus de rafale ; un 429 reçu arrête l'audit (TargetGuard)
   9) CDN geographic, X-Vary, CDN-specific variation headers
 
 All findings are INFO severity, informational for the auditor, not vulnerabilities.
@@ -306,38 +306,16 @@ class WafCdnCheck(BaseCheck):
     # ── 8. Rate Limiting Detection ───────────────────────────────────────
 
     def _check_rate_limiting(self) -> None:
-        """Send 3 rapid requests to check for rate limiting (429 / Retry-After).
+        """Limitation de débit : plus de rafale de requêtes pour la provoquer.
 
-        `no_cache=True` : ces 3 requêtes vers la même URL doivent chacune
-        toucher le réseau, un rate limiter ne se déclenche typiquement qu'à
-        partir de la 2e/3e requête, donc servir la réponse mise en cache de la
-        1re empêcherait de jamais observer le 429.
+        L'ancienne sonde envoyait 3 requêtes rapides vers l'accueil pour faire
+        apparaître un 429 : chercher à déclencher la protection du site est
+        contraire à la cadence de l'audit, qui a fait bannir l'adresse de
+        l'auditeur lors du premier audit réel. Un 429 reçu pendant l'audit, sur
+        n'importe quelle requête, arrête désormais l'audit (TargetGuard) et le
+        rapport le dit. Ce contrôle n'envoie donc aucune requête.
         """
-        for i in range(3):
-            try:
-                resp = self.http_get("/", no_cache=True)
-                if resp.status_code == 429:
-                    retry_after = resp.headers.get("Retry-After", "N/A")
-                    self._result.add_finding(
-                        message=f"Rate limiting detected, HTTP 429 on request {i + 1}",
-                        severity="INFO",
-                        evidence=f"Retry-After: {retry_after}",
-                        url=self.target,
-                    )
-                    return
-                # Some WAFs return 503 instead of 429
-                if resp.status_code == 503:
-                    retry_after = resp.headers.get("Retry-After", "N/A")
-                    self._result.add_finding(
-                        message=f"Rate limiting likely detected, HTTP 503 on "
-                        f"request {i + 1}",
-                        severity="INFO",
-                        evidence=f"Retry-After: {retry_after}",
-                        url=self.target,
-                    )
-                    return
-            except Exception:
-                continue
+        return
 
     # ── 9. CDN Geographic Detection ──────────────────────────────────────
 
