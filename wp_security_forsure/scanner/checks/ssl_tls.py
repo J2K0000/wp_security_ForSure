@@ -687,6 +687,25 @@ class SSLTLSChannel(BaseCheck):
 
     # ── 6) OCSP stapling ────────────────────────────────────────────────
 
+    @staticmethod
+    def _certificate_ocsp_uri(output: str) -> Optional[str]:
+        """URL OCSP du certificat présenté dans une sortie d'openssl s_client :
+        "" si le certificat n'en publie aucune, None si elle n'est pas lisible
+        (certificat absent de la sortie, openssl indisponible)."""
+        m = re.search(r"-----BEGIN CERTIFICATE-----.+?-----END CERTIFICATE-----",
+                      output or "", re.S)
+        if not m:
+            return None
+        try:
+            proc = subprocess.run(["openssl", "x509", "-noout", "-ocsp_uri"],
+                                  input=m.group(0), capture_output=True, text=True,
+                                  timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if proc.returncode != 0:
+            return None
+        return proc.stdout.strip()
+
     def _check_ocsp_stapling(self, hostname: str, port: int) -> None:
         """Check if OCSP stapling is enabled."""
         output = self._run_openssl(
@@ -736,6 +755,20 @@ class SSLTLSChannel(BaseCheck):
                     url=self.target,
                 )
 
+        elif ("OCSP response: no response sent" in output
+              and self._certificate_ocsp_uri(output) == ""):
+            # Certificat sans URL OCSP : rien à agrafer. Let's Encrypt a retiré
+            # OCSP de ses certificats en mai 2025 et fermé ses répondeurs le
+            # 6 août 2025 (https://letsencrypt.org/2025/08/06/ocsp-service-has-reached-end-of-life).
+            self._result.add_finding(
+                message=("Pas d'agrafage OCSP : normal, le certificat ne publie aucune "
+                         "URL OCSP (révocation par CRL)"),
+                severity="INFO",
+                evidence=("Le certificat présenté ne contient pas d'adresse de répondeur "
+                          "OCSP (openssl x509 -ocsp_uri vide) : le serveur n'a rien à "
+                          "agrafer."),
+                url=self.target,
+            )
         elif "OCSP response: no response sent" in output:
             self._result.add_finding(
                 message="OCSP stapling is disabled, no OCSP response sent",

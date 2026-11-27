@@ -24,8 +24,9 @@ rules it follows are in [docs/RESPONSIBLE_USE.md](docs/RESPONSIBLE_USE.md).
 
 At full speed, the `--authorized` pass got the auditor's address banned by the hosting provider about
 a minute and a half after guessed paths started (258 requests). The tool then sent 346 more requests,
-345 of them refused or cut, while reporting a complete audit. Fixed
-before this release:
+345 of them refused or cut, while reporting a complete audit. The ban started right after probes
+for `wp-config.php` backups: a host may react to volume or to such probes, and spacing requests only
+addresses volume. Fixed before this release:
 
 - requests to the audited site are spaced (1 s, 2 s for guessed paths, `--delay`);
 - the audit stops at the first sign of blocking (HTTP 429, a hosting ban page, a Cloudflare
@@ -37,3 +38,8 @@ before this release:
   as critical, the core test cookie taken for a session cookie, core REST namespaces counted as
   plugins, a namespace mapped to the wrong plugin slug, TLS 1.0, 1.1 and 1.3 misread from a refused
   handshake, ordinary hidden markup and review widgets reported as SEO spam.
+
+### After 0.1.0
+
+- `ssl_tls`: a certificate without an OCSP URL (Let's Encrypt since May 2025) has nothing to staple;
+  missing stapling is no longer reported as a defect.

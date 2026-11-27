@@ -158,3 +158,29 @@ def test_old_protocols_are_offered_at_security_level_zero():
     assert by_flag["-tls1"][1:] == ["-cipher", "DEFAULT@SECLEVEL=0"]
     assert by_flag["-tls1_1"][1:] == ["-cipher", "DEFAULT@SECLEVEL=0"]
     assert by_flag["-tls1_2"] == ["-tls1_2"]
+
+
+# OCSP : un certificat sans URL OCSP (Let's Encrypt depuis mai 2025) n'a rien à
+# agrafer ; « no response sent » n'est alors pas un défaut (faux MEDIUM du
+# premier audit réel).
+NO_STAPLE = ("-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"
+             "OCSP response: no response sent\n")
+
+
+def _ocsp_check(uri):
+    chk = make_check(SSLTLSChannel)
+    chk._run_openssl = lambda hostname, port, extra_args=None, timeout=15: NO_STAPLE
+    chk._certificate_ocsp_uri = staticmethod(lambda output: uri)
+    return chk
+
+
+def test_no_stapling_without_ocsp_url_is_info():
+    chk = _ocsp_check("")
+    chk._check_ocsp_stapling("example.com", 443)
+    assert [f["severity"] for f in chk._result.findings] == ["INFO"]
+
+
+def test_no_stapling_with_ocsp_url_stays_medium():
+    chk = _ocsp_check("http://ocsp.example.com")
+    chk._check_ocsp_stapling("example.com", 443)
+    assert [f["severity"] for f in chk._result.findings] == ["MEDIUM"]
