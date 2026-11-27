@@ -57,7 +57,7 @@ DEFAULT_MAX_REQUESTS = 2000
 # publier de seuil (OVHcloud : « un très grand nombre de requêtes en un temps
 # extrêmement court », https://docs.ovhcloud.com/fr/guides/web-cloud/web-hosting/
 # ip-has-been-banned-diagnosis). Le premier audit réel de l'outil, à pleine
-# vitesse, a été banni dix secondes après le début des chemins devinés.
+# vitesse, a été banni 1 min 40 s (258 requêtes) après le début des chemins devinés.
 DEFAULT_REQUEST_DELAY = 1.0
 DEFAULT_UNLINKED_REQUEST_DELAY = 2.0
 # Réponses 403/503 ou échecs consécutifs avant de vérifier si l'accueil répond

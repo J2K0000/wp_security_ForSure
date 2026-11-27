@@ -22,8 +22,9 @@ rules it follows are in [docs/RESPONSIBLE_USE.md](docs/RESPONSIBLE_USE.md).
 
 ### Lessons from the first real audit (shared hosting)
 
-At full speed, the `--authorized` pass got the auditor's address banned by the hosting provider ten
-seconds after guessed paths started, and the tool kept going while reporting a complete audit. Fixed
+At full speed, the `--authorized` pass got the auditor's address banned by the hosting provider about
+a minute and a half after guessed paths started (258 requests). The tool then sent 346 more requests,
+345 of them refused or cut, while reporting a complete audit. Fixed
 before this release:
 
 - requests to the audited site are spaced (1 s, 2 s for guessed paths, `--delay`);

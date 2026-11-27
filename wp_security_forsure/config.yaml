@@ -33,7 +33,7 @@ skip_reachability: false    # true = ne pas sonder la joignabilité avant l'audi
 
 # Cadence vers le site audité (secondes entre deux requêtes). Un hébergement
 # mutualisé bannit l'adresse d'un audit trop rapide : à pleine vitesse, le
-# premier audit réel de l'outil a été banni en dix secondes. Option --delay.
+# premier audit réel de l'outil a été banni après 258 chemins devinés. Option --delay.
 request_delay: 1.0          # requêtes de niveau 0 et 1
 unlinked_request_delay: 2.0 # chemins devinés (niveau 2, --authorized)
 # Refus (403, 503) ou échecs consécutifs avant de vérifier que l'accueil

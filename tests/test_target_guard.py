@@ -1,9 +1,9 @@
 """Cadence, coupures et blocage des requêtes vers la cible (TargetGuard).
 
 Leçon du premier audit réel : lancé à pleine vitesse sur un hébergement
-mutualisé, l'audit --authorized a fait bannir l'adresse de l'auditeur en dix
-secondes, puis a continué (634 requêtes, 377 refusées) en annonçant « audit
-complet ». Ces tests verrouillent l'inverse : délai entre les requêtes, arrêt
+mutualisé, l'audit --authorized a fait bannir l'adresse de l'auditeur 1 min 40 s
+après le début des chemins devinés, puis a continué (346 requêtes de plus, dont
+345 refusées ou coupées) en annonçant « audit complet ». Ces tests verrouillent l'inverse : délai entre les requêtes, arrêt
 au premier signe de blocage, audit déclaré incomplet.
 """
 import pytest
