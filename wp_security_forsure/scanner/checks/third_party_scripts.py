@@ -189,7 +189,9 @@ class ThirdPartyScriptsCheck(BaseCheck):
          "Geolocation API access", "HIGH"),
         (r"getUserMedia|mediaDevices\.getUserMedia|navigator\.mediaDevices",
          "Camera/Microphone access", "CRITICAL"),
-        (r"navigator\.clipboard", "Clipboard API access", "HIGH"),
+        # Le presse-papiers sert aussi à un bouton « copier » ordinaire ; seule la
+        # passe --render voit une écriture réelle (ClickFix). Simple mention ici.
+        (r"navigator\.clipboard", "Clipboard API access", "LOW"),
         (r"getDisplayMedia|captureStream",
          "Screen capture access", "CRITICAL"),
     ]
@@ -960,6 +962,8 @@ class ThirdPartyScriptsCheck(BaseCheck):
                             f"as it enables user tracking or surveillance"
                         ),
                         url=self.target,
+                        # Nom d'API trouvé dans le code, pas un usage observé.
+                        confidence="potential",
                     )
 
         # 9b. Check external scripts by downloading and scanning content
@@ -993,6 +997,7 @@ class ThirdPartyScriptsCheck(BaseCheck):
                                     f"accesses {description.lower()}"
                                 ),
                                 url=url,
+                                confidence="potential",
                             )
             except Exception:
                 # Skip scripts that can't be fetched

@@ -338,14 +338,20 @@ class SSLTLSChannel(BaseCheck):
     def _check_protocol_versions(self, hostname: str, port: int) -> None:
         """Test support for TLS 1.0 through 1.3."""
         for proto_name, flag, severity_when_enabled in self._PROTOCOLS:
-            output = self._run_openssl(hostname, port, extra_args=[flag])
+            extra = [flag]
+            if proto_name in ("TLS 1.0", "TLS 1.1"):
+                # OpenSSL 3 ne propose TLS 1.0 et 1.1 qu'au niveau de sécurité 0 :
+                # sans ce réglage, le test n'atteint jamais le serveur.
+                extra += ["-cipher", "DEFAULT@SECLEVEL=0"]
+            output = self._run_openssl(hostname, port, extra_args=extra)
 
-            # Check if handshake succeeded
-            handshake_ok = bool(
-                "BEGIN CERTIFICATE" in output
-                or "New, TLS" in output
-                or "Cipher is " in output
-            )
+            # Handshake réussi = un cipher réellement négocié. Un refus du
+            # serveur affiche aussi « Cipher is (NONE) » : la seule présence de
+            # « Cipher is » signalait TLS 1.0 et 1.1 actifs sur un serveur qui
+            # les refuse (faux HIGH du premier audit réel).
+            handshake_ok = (self._negotiated_cipher(output) is not None
+                            or ("BEGIN CERTIFICATE" in output
+                                and "Cipher is (NONE)" not in output))
             not_supported = bool(
                 "handshake failure" in output
                 or "SSL_ERROR" in output
@@ -372,7 +378,21 @@ class SSLTLSChannel(BaseCheck):
                     )
             else:
                 # TLS 1.0 and 1.1, they should NOT be enabled
-                if handshake_ok:
+                if "no protocols available" in output:
+                    # L'openssl local refuse de proposer ce protocole (niveau de
+                    # sécurité d'OpenSSL 3) : rien n'est envoyé, rien n'est su.
+                    self._result.add_finding(
+                        message=(f"{proto_name} non testable : l'openssl local refuse "
+                                 "de proposer ce protocole"),
+                        severity="INFO",
+                        evidence=("openssl s_client répond « no protocols available » "
+                                  "avant tout échange avec le serveur. Tester avec un "
+                                  "outil qui propose encore ce protocole (par exemple "
+                                  "openssl avec -cipher 'DEFAULT@SECLEVEL=0')."),
+                        url=self.target,
+                        confidence="potential",
+                    )
+                elif handshake_ok:
                     self._result.add_finding(
                         message=f"{proto_name} is ENABLED (deprecated protocol)",
                         severity=severity_when_enabled,

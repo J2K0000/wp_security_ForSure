@@ -81,3 +81,80 @@ def test_genuine_anon_cipher_accepted_is_flagged():
     f = _weak(chk)
     assert len(f) == 1
     assert "ADH-AES256-GCM-SHA384" in f[0]["message"]
+
+
+# Versions de protocole : un refus du serveur affiche « Cipher is (NONE) ».
+# Le test « "Cipher is " in output » signalait TLS 1.0 et 1.1 actifs (HIGH) sur
+# un serveur qui les refuse : faux positif du premier audit réel.
+
+PROTO_REFUSED = ("CONNECTED(00000003)\n"
+                 "40D7:error:0A00042E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version\n"
+                 "---\nno peer certificate available\n---\n"
+                 "New, (NONE), Cipher is (NONE)\n")
+TLS12_OK = ("-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"
+            "New, TLSv1.2, Cipher is ECDHE-ECDSA-AES256-GCM-SHA384\n")
+
+
+def _proto_check(outputs_by_flag):
+    chk = make_check(SSLTLSChannel)
+
+    def fake_run(hostname, port, extra_args=None, timeout=15):
+        flag = (extra_args or [""])[0]
+        return outputs_by_flag.get(flag, "")
+
+    chk._run_openssl = fake_run
+    return chk
+
+
+def test_refused_old_protocols_are_not_reported_enabled():
+    chk = _proto_check({"-tls1_3": TLS13_STRONG, "-tls1_2": TLS12_OK,
+                        "-tls1_1": PROTO_REFUSED, "-tls1": PROTO_REFUSED})
+    chk._check_protocol_versions("example.com", 443)
+    enabled = [f["message"] for f in chk._result.findings if "ENABLED" in f["message"]]
+    assert enabled == []
+
+
+def test_accepted_old_protocol_is_reported():
+    accepted = "New, TLSv1, Cipher is ECDHE-RSA-AES256-SHA\n"
+    chk = _proto_check({"-tls1_3": TLS13_STRONG, "-tls1_2": TLS12_OK,
+                        "-tls1_1": PROTO_REFUSED, "-tls1": accepted})
+    chk._check_protocol_versions("example.com", 443)
+    enabled = [f for f in chk._result.findings if "ENABLED" in f["message"]]
+    assert [f["message"] for f in enabled] == ["TLS 1.0 is ENABLED (deprecated protocol)"]
+    assert enabled[0]["severity"] == "HIGH"
+
+
+# Capture réelle OpenSSL 3.5.3 (2026-11-27) : le client local refuse TLS 1.0
+# avant tout échange ; et un serveur qui refuse TLS 1.3 renvoie l'alerte 70.
+LOCAL_REFUSES = ("no peer certificate available\nNew, (NONE), Cipher is (NONE)\n"
+                 "error:0A0000BF:SSL routines:tls_setup_handshake:no protocols available\n")
+SERVER_REFUSES_13 = ("no peer certificate available\nNew, (NONE), Cipher is (NONE)\n"
+                     "error:0A00042E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol "
+                     "version:SSL alert number 70\n")
+
+
+def test_locally_untestable_protocol_is_declared_not_enabled():
+    chk = _proto_check({"-tls1_3": SERVER_REFUSES_13, "-tls1_2": TLS12_OK,
+                        "-tls1_1": LOCAL_REFUSES, "-tls1": LOCAL_REFUSES})
+    chk._check_protocol_versions("example.com", 443)
+    msgs = {f["message"]: f["severity"] for f in chk._result.findings}
+    assert not any("ENABLED" in m for m in msgs)
+    assert msgs["TLS 1.0 non testable : l'openssl local refuse de proposer ce protocole"] == "INFO"
+    assert "TLS 1.3 supported" not in msgs
+    assert msgs.get("TLS 1.3 not supported") == "MEDIUM"
+
+
+def test_old_protocols_are_offered_at_security_level_zero():
+    seen = []
+    chk = make_check(SSLTLSChannel)
+
+    def fake_run(hostname, port, extra_args=None, timeout=15):
+        seen.append(list(extra_args or []))
+        return SERVER_REFUSES_13
+
+    chk._run_openssl = fake_run
+    chk._check_protocol_versions("example.com", 443)
+    by_flag = {a[0]: a for a in seen}
+    assert by_flag["-tls1"][1:] == ["-cipher", "DEFAULT@SECLEVEL=0"]
+    assert by_flag["-tls1_1"][1:] == ["-cipher", "DEFAULT@SECLEVEL=0"]
+    assert by_flag["-tls1_2"] == ["-tls1_2"]
